@@ -13,6 +13,9 @@ from tools.search_tools import list_directory, search_codebase, get_file_outline
 from tools.shell_tools import run_command
 from tools.subagent import delegate_task
 from tools.web_tools import search_web, fetch_web_page
+from tools.diagnostics import get_diagnostics
+from tools.patch_engine import PatchEngine
+from tools.process_manager import ProcessManager
 
 # Esquemas de herramientas compatibles con Ollama / OpenAI
 TOOLS_SCHEMA: List[Dict[str, Any]] = [
@@ -320,8 +323,220 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "required": ["source", "destination"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_patch",
+            "description": "Aplica una edición atómica y transaccional verificando SHA256 o similitud fuzzy, generando diff unificado.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta del archivo a modificar."
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Texto exacto o bloque de código que se va a sustituir."
+                    },
+                    "replacement": {
+                        "type": "string",
+                        "description": "Nuevo texto o bloque de código que reemplazará al objetivo."
+                    },
+                    "expected_sha256": {
+                        "type": "string",
+                        "description": "Hash SHA-256 opcional para prevenir colisiones o ediciones concurrentes."
+                    }
+                },
+                "required": ["path", "target", "replacement"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_diagnostics",
+            "description": "Inspecciona el AST y la sintaxis de un archivo (Python, JSON) para detectar errores antes o después de editar.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta del archivo a inspeccionar."
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_tests",
+            "description": "Ejecuta las pruebas unitarias del proyecto de forma automatizada (por defecto con pytest).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "test_target": {
+                        "type": "string",
+                        "description": "Ruta o archivo específico de tests a ejecutar (opcional)."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_background_process",
+            "description": "Inicia un comando persistente en segundo plano (servidor de desarrollo, watcher, script largo) y retorna un process_id.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Comando a ejecutar en segundo plano."
+                    },
+                    "cwd": {
+                        "type": "string",
+                        "description": "Directorio de trabajo opcional."
+                    }
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_process_status",
+            "description": "Consulta el estado, salida estándar y errores de un proceso en segundo plano por su process_id.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "process_id": {
+                        "type": "string",
+                        "description": "ID del proceso retornado por start_background_process."
+                    }
+                },
+                "required": ["process_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_process",
+            "description": "Termina y cancela de forma forzosa un proceso en segundo plano y todo su árbol de procesos.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "process_id": {
+                        "type": "string",
+                        "description": "ID del proceso a cancelar."
+                    }
+                },
+                "required": ["process_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "safe_checkpoint",
+            "description": "Guarda un punto de restauración seguro a nivel de archivo sin usar git reset --hard.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Descripción del punto de restauración."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "safe_undo_checkpoint",
+            "description": "Restaura quirúrgicamente los archivos modificados desde el último checkpoint seguro.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "snapshot_id": {
+                        "type": "string",
+                        "description": "ID opcional del checkpoint específico a restaurar."
+                    }
+                }
+            }
+        }
     }
 ]
+
+# Funciones puente para herramientas extendidas
+def apply_patch_tool(path: str, target: str, replacement: str, expected_sha256: str = None) -> str:
+    res = PatchEngine.apply_single_patch(path, target, replacement, expected_sha256)
+    if res.success:
+        diff_str = res.diff if res.diff else "(sin cambios textuales en diff)"
+        return f"✅ Parche transaccional aplicado con éxito en '{res.filepath.name}'.\nSHA256: {res.old_sha256[:8]} -> {res.new_sha256[:8]}\n\nDiff unificado:\n{diff_str}"
+    return f"❌ Fallo al aplicar parche en '{path}': {res.error}"
+
+
+def run_tests_tool(test_target: str = None) -> str:
+    cmd = "pytest -v" if not test_target else f"pytest -v {test_target}"
+    return run_command(cmd)
+
+
+def start_background_process_tool(command: str, cwd: str = None) -> str:
+    pm = ProcessManager()
+    pid_id = pm.start_process(command, cwd)
+    return f"🚀 Proceso iniciado en segundo plano con ID '{pid_id}'. Consulta su estado con get_process_status('{pid_id}')."
+
+
+def get_process_status_tool(process_id: str) -> str:
+    pm = ProcessManager()
+    status = pm.get_status(process_id)
+    if not status.get("success"):
+        return f"❌ Error: {status.get('error')}"
+    state = "🟢 EN EJECUCIÓN" if status["is_running"] else f"⚪ FINALIZADO (Código {status['exit_code']})"
+    output = f"Estado de {status['process_id']} ({state}) [PID: {status['pid']}]:\n"
+    if status.get("stdout"):
+        output += f"--- STDOUT ---\n{status['stdout']}\n"
+    if status.get("stderr"):
+        output += f"--- STDERR ---\n{status['stderr']}\n"
+    return output.strip()
+
+
+def cancel_process_tool(process_id: str) -> str:
+    pm = ProcessManager()
+    res = pm.cancel_process(process_id)
+    if res.get("success"):
+        return f"🛑 {res.get('message')}"
+    return f"❌ Error: {res.get('error')}"
+
+
+def safe_checkpoint_tool(message: str = "Punto de control automático") -> str:
+    from agent.checkpoints import SafeCheckpointManager
+    mgr = SafeCheckpointManager()
+    snap_id = mgr.create_checkpoint(message)
+    return f"✅ Checkpoint seguro creado: '{snap_id}' ({message})."
+
+
+def safe_undo_checkpoint_tool(snapshot_id: str = None) -> str:
+    from agent.checkpoints import SafeCheckpointManager
+    mgr = SafeCheckpointManager()
+    if not snapshot_id:
+        checkpoints = mgr.list_checkpoints()
+        if not checkpoints:
+            return "❌ No existen checkpoints seguros registrados para restaurar."
+        snapshot_id = checkpoints[0]["snapshot_id"]
+    success, msg = mgr.restore_checkpoint(snapshot_id)
+    if success:
+        return f"✅ {msg}"
+    return f"❌ Fallo al restaurar checkpoint: {msg}"
+
 
 # Mapa de ejecutores en Python
 TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
@@ -342,6 +557,14 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "undo_checkpoint": undo_checkpoint,
     "get_git_diff": get_git_diff,
     "get_git_status": get_git_status,
+    "apply_patch": apply_patch_tool,
+    "get_diagnostics": get_diagnostics,
+    "run_tests": run_tests_tool,
+    "start_background_process": start_background_process_tool,
+    "get_process_status": get_process_status_tool,
+    "cancel_process": cancel_process_tool,
+    "safe_checkpoint": safe_checkpoint_tool,
+    "safe_undo_checkpoint": safe_undo_checkpoint_tool,
 }
 
 

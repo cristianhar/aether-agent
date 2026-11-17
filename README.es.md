@@ -6,13 +6,14 @@
 
 **Agente Autónomo de Ingeniería de Software Local y CLI Interactiva**
 
-[![Tests](https://img.shields.io/badge/pruebas-24%20pasadas-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/pruebas-42%20pasadas-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
+[![Repositorio](https://img.shields.io/badge/github-cristianhar%2Faether--agent-181717?logo=github)](https://github.com/cristianhar/aether-agent)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-purple.svg)]()
 [![Hardware](https://img.shields.io/badge/hardware-Optimizado%20RTX%204060-76b900.svg)]()
 [![Costo API](https://img.shields.io/badge/costo-$0%20Offline-success.svg)]()
 
-[English](./README.md) • [Guía de Arquitectura](./docs/architecture.md) • [Plan Maestro](./docs/plan_maestro.md)
+[English](./README.md) • [Guía de Arquitectura](./docs/architecture.md) • [Plan Maestro](./docs/plan_maestro.md) • [Repositorio GitHub](https://github.com/cristianhar/aether-agent)
 
 </div>
 
@@ -31,13 +32,16 @@ A diferencia de los chats pasivos, AETHER opera como un ingeniero de software ac
 | Capacidad | Implementación Técnica | Beneficio Práctico |
 | :--- | :--- | :--- |
 | **Bucle ReAct Autónomo** | Esquemas JSON Schema con streaming en `/api/chat` de Ollama | El agente selecciona herramientas, las ejecuta, observa la salida en consola y toma decisiones continuas. |
-| **Motor de Auto-Sanación (Self-Healing)** | Captura de tracebacks y sugerencias guiadas de recuperación | Si una prueba o script falla (ej. `EOFError`, `SyntaxError`), AETHER crea parches o mocks y vuelve a probar hasta dejarlas en verde (`exit code 0`). |
+| **Motor Transaccional de Parches** | Escritura atómica (`.tmp` + `os.replace`), SHA-256 pre-check y reversión | Cero riesgo de corrupción de archivos, ediciones truncadas o colisiones de concurrencia. |
+| **Motor de Permisos y Jaula** | Aislamiento en límites de workspace, patrones destructivos y confirmación | Impide destrucción accidental o modificaciones fuera del proyecto. |
+| **Checkpoints Seguros por Archivo** | Snapshots de pre-imagen en `.aether/checkpoints/<id>/` | Restaura quirúrgicamente solo los archivos del agente sin `git reset --hard`. |
+| **Persistencia SQLite de Sesiones** | Base de datos `.aether/sessions.db` con `/sessions` y `/resume` | Reanuda tareas y audita ejecuciones entre reinicios sin perder contexto. |
+| **Gestor Asíncrono de Procesos** | Ejecución desacoplada con IDs de proceso y cancelación de árbol en Windows | Corre servidores o watchers sin bloquear el agente y deténlos con `/cancel`. |
+| **Telemetría y Rendimiento** | Registro JSONL de latencias y reporte resumido (`/telemetry`) | Visibilidad en tiempo real de tiempos de inferencia y tasa de éxito de herramientas. |
 | **Repo-Map Compacto** | Extracción sintáctica AST de clases, firmas y métodos | Mapea proyectos enteros en ~300 tokens sin saturar la memoria de contexto. |
-| **Edición Quirúrgica con Fuzzy Match** | Tolerancia inteligente a sangrías y validación de sintaxis | Modifica bloques de código sin romper indentaciones ni sobreescribir archivos enteros. |
+| **Diagnósticos Estáticos AST** | Validación de sintaxis para Python y JSON (`get_diagnostics`) | Comprueba la validez sintáctica del código antes y después de aplicar cambios. |
 | **Modos de Trabajo** | Sistema de hooks con soporte para `/mode ask`, `/mode agent`, `/mode plan` | Modo de solo lectura en `ask`; creación y ejecución con plenos poderes en `agent`. |
 | **Subagentes Lógicos** | Contextos de conversación aislados compartiendo el modelo local | Delega investigaciones pesadas o auditorías a subagentes auxiliares sin ensuciar la memoria principal. |
-| **Checkpoints de Seguridad Git** | Snapshots inmediatos con Git y rollback instantáneo (`/undo`) | Revierte cualquier cambio defectuoso en menos de 1 segundo. |
-| **Navegación Dinámica** | Comando `/cd <ruta>` con re-indexación automática | Salta entre diferentes proyectos de tu PC sin mover el lanzador. |
 
 ---
 

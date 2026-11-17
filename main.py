@@ -15,6 +15,9 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
 from agent.orchestrator import AgentOrchestrator
+from agent.checkpoints import SafeCheckpointManager
+from agent.session import SessionManager
+from agent.telemetry import TelemetryLogger
 from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, undo_checkpoint
 from tools.repomap import generate_repo_map
 
@@ -32,7 +35,7 @@ def render_banner(model_name: str, ollama_ok: bool):
 [bold]Estado de inferencia:[/] [{status_color}]{status_text}[/{status_color}]
 [bold]Directorio de trabajo:[/] [yellow]{Path.cwd()}[/yellow]
 
-[dim]Comandos: /cd <ruta> | /map | /test | /commit | /diff | /export | /undo | /model <nombre> | /clear | /exit[/dim]
+[dim]Comandos: /cd <ruta> | /map | /test | /commit | /diff | /export | /sessions | /resume <id> | /telemetry | /undo | /model <nombre> | /clear | /exit[/dim]
 """
     console.print(Panel(banner_text, border_style="cyan", title="[bold]AETHER v0.1.0[/bold]"))
 
@@ -193,6 +196,8 @@ def main():
             token_count = orchestrator.memory.estimate_tokens()
             msg_count = len(orchestrator.memory.get_messages())
             status_report = f"""[bold]Modelo:[/] {orchestrator.model}
+[bold]Sesión Activa:[/] [cyan]{orchestrator.session_id}[/cyan]
+[bold]Estado Formal:[/] [green]{orchestrator.state.value}[/green]
 [bold]Modo Operativo:[/] [cyan]{orchestrator.hooks.mode.upper()}[/cyan]
 [bold]Mensajes en Contexto:[/] {msg_count} turnos (~{token_count} tokens)
 [bold]Directorio:[/] {Path.cwd()}
@@ -200,6 +205,44 @@ def main():
 [bold cyan]--- Estado de Git ---[/bold cyan]
 {git_st}"""
             console.print(Panel(status_report, title="[bold green]📊 Estado del Sistema AETHER[/bold green]", border_style="green"))
+            continue
+
+        elif user_input == "/sessions":
+            sm = SessionManager()
+            sessions = sm.list_sessions(limit=10)
+            if not sessions:
+                console.print("[yellow]No hay sesiones previas registradas.[/yellow]")
+            else:
+                lines = ["[bold cyan]ID Sesión | Fecha | Estado | Modelo[/bold cyan]"]
+                for s in sessions:
+                    active_marker = " (activa)" if s["session_id"] == orchestrator.session_id else ""
+                    lines.append(f"• [green]{s['session_id']}[/green]{active_marker} | {s['updated_at'][:19]} | {s['state']} | {s['model']}")
+                console.print(Panel("\n".join(lines), title="🗄️ Historial de Sesiones Persistentes", border_style="cyan"))
+            continue
+
+        elif user_input.startswith("/resume"):
+            target_id = user_input[len("/resume"):].strip()
+            if not target_id:
+                console.print("[bold red]Uso:[/] /resume <session_id>")
+                continue
+            sm = SessionManager()
+            past_msgs = sm.get_session_messages(target_id)
+            if not past_msgs:
+                console.print(f"[bold red]Error:[/] No se encontraron mensajes para la sesión '{target_id}'.")
+            else:
+                orchestrator.session_id = target_id
+                orchestrator.memory.messages = past_msgs
+                console.print(f"[bold green]✅ Sesión '{target_id}' reanudada con {len(past_msgs)} mensajes cargados en contexto.[/bold green]")
+            continue
+
+        elif user_input == "/telemetry":
+            tlog = TelemetryLogger()
+            summary = tlog.get_summary()
+            telem_text = f"""[bold]Turnos Totales de Agente:[/] {summary['total_turns']}
+[bold]Llamadas a Herramientas:[/] {summary['total_tool_calls']}
+[bold]Fallos / Reintentos de Herramientas:[/] {summary['tool_failures']} ({summary['tool_failure_rate_percent']}%)
+[bold]Duración Promedio por Turno:[/] {summary['average_turn_duration_seconds']}s"""
+            console.print(Panel(telem_text, title="📈 Telemetría y Rendimiento de AETHER", border_style="magenta"))
             continue
 
         elif user_input == "/undo":
@@ -268,6 +311,9 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
 - **/commit [mensaje]**: Hace `git add -A` y commit de todos los cambios de forma limpia.
 - **/diff**: Muestra los cambios actuales de código frente al último commit con resaltado de sintaxis.
 - **/export [archivo]**: Exporta la sesión completa y código generado a un documento Markdown.
+- **/sessions**: Lista las sesiones persistentes almacenadas en SQLite (.aether/sessions.db).
+- **/resume <id>**: Reanuda una sesión previa restaurando el historial completo de mensajes.
+- **/telemetry**: Muestra métricas de rendimiento, latencia y tasa de éxito de herramientas.
 - **/status**: Muestra el estado de archivos en Git y telemetría de tokens en VRAM.
 - **/undo**: Revierte al último checkpoint seguro en 1 segundo.
 - **/checkpoint [mensaje]**: Guarda un punto de restauración seguro con Git.

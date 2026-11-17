@@ -6,13 +6,14 @@
 
 **Local-First Autonomous AI Software Engineering Agent & Interactive CLI**
 
-[![Tests](https://img.shields.io/badge/tests-24%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-42%20passed-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
+[![Repository](https://img.shields.io/badge/github-cristianhar%2Faether--agent-181717?logo=github)](https://github.com/cristianhar/aether-agent)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
 [![Hardware](https://img.shields.io/badge/hardware-NVIDIA%20RTX%204060%20Optimized-76b900.svg)]()
 [![API Cost](https://img.shields.io/badge/cost-$0%20Offline-success.svg)]()
 
-[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Master Plan](./docs/plan_maestro.md)
+[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Master Plan](./docs/plan_maestro.md) • [GitHub Repository](https://github.com/cristianhar/aether-agent)
 
 </div>
 
@@ -31,13 +32,16 @@ Unlike simple chat interfaces, AETHER operates as an active software engineer: i
 | Capability | Technical Implementation | Practical Benefit |
 | :--- | :--- | :--- |
 | **Autonomous ReAct Loop** | Pydantic JSON schemas with Ollama `/api/chat` streaming | The agent decides tools, runs them, observes terminal outputs, and iterates automatically. |
-| **Self-Healing Feedback Engine** | Traceback capture and auto-guided recovery prompts | When a unit test or script throws an exception (e.g. `EOFError`, `SyntaxError`), AETHER writes patches or test mocks and re-executes until passing green (`exit code 0`). |
+| **Transactional Patch Engine** | Atomic writes (`.tmp` + `os.replace`), SHA-256 pre-check & multi-file rollback | Zero risk of file corruption, half-written edits, or concurrency conflicts. |
+| **Capability Permission Engine** | Path boundary jail, dangerous command regex & approval prompts | Prevents accidental system damage outside the workspace. |
+| **Safe File-Level Checkpoints** | Pre-image snapshots in `.aether/checkpoints/<id>/` | Restores only agent-modified files without destructive `git reset --hard`. |
+| **SQLite Session Management** | Persistent `.aether/sessions.db` with `/sessions` & `/resume` | Resume conversations and audit tool executions across restarts. |
+| **Process Manager & Cancellation** | Non-blocking execution with process IDs & Windows tree-kill | Run long dev servers/tests with instant `/cancel` support. |
+| **Structured Telemetry** | High-performance JSONL logging with `/telemetry` summary | Realtime metrics on turn duration, token usage, and tool success rate. |
 | **Compact Repo-Map** | AST symbol extraction for classes, signatures, and functions | Maps multi-file repositories in ~300 tokens without overflowing context windows. |
-| **Surgical Editing & Fuzzy Matching** | Indentation-tolerant matching with AST validation | Edits target code blocks without breaking indentation or overwriting whole files. |
+| **AST Static Diagnostics** | Python AST & JSON syntax parsing (`get_diagnostics`) | Verifies code validity before and after applying edits. |
 | **Operational Modes** | Hook system supporting `/mode ask`, `/mode agent`, `/mode plan` | Read-only inspection in `ask` mode; full file creation and execution in `agent` mode. |
-| **Claude-Code Style Subagents** | Isolated conversation contexts sharing the local model | Offload heavy research or log audits to auxiliary subagents without polluting primary memory. |
-| **Git Safety Checkpoints** | Instant snapshot commits and rollback (`undo_checkpoint`) | Safely revert code modifications in less than 1 second. |
-| **Dynamic Project Navigation** | `/cd <path>` with automatic project re-indexing | Jump between repositories seamlessly on your computer. |
+| **Claude-Code Subagents** | Isolated conversation contexts sharing the local model | Offload heavy research or log audits to auxiliary subagents without polluting primary memory. |
 
 ---
 

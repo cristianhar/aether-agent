@@ -1,19 +1,45 @@
 """
 Orquestador y Bucle ReAct principal para el Agente AETHER.
-Maneja la comunicación con Ollama, ejecución de herramientas y bucle de autocorrección.
+Integra máquina de estados, token de cancelación, motor de permisos, persistencia SQLite y telemetría.
 """
 
+from datetime import datetime
 import json
+import os
 from pathlib import Path
 import re
-from typing import Any, Callable, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from agent.hooks import HookManager
 from agent.memory import ConversationMemory
+from agent.permissions import PermissionDecision, PermissionEngine, PermissionRequest
 from agent.prompts import SYSTEM_PROMPT
 from agent.safety import check_command_safety
+from agent.session import SessionManager
+from agent.state import AgentState, CancellationToken
+from agent.telemetry import TelemetryLogger
+from tools.base import PermissionLevel, ToolCategory
 from tools.registry import TOOLS_SCHEMA, execute_tool
+
+
+def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
+    """Clasifica cada herramienta según su categoría de riesgo y permisos."""
+    if name in ["read_file", "search_codebase", "list_directory", "get_file_outline", "get_repo_map", "get_diagnostics", "get_process_status"]:
+        category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
+        return category, PermissionLevel.READ_ONLY
+
+    if name in ["write_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
+        return ToolCategory.FILESYSTEM, PermissionLevel.WORKSPACE_WRITE
+
+    if name in ["run_command", "run_tests", "start_background_process", "cancel_process"]:
+        return ToolCategory.EXECUTION, PermissionLevel.COMMAND_EXECUTE
+
+    if name in ["create_checkpoint", "undo_checkpoint", "safe_checkpoint", "safe_undo_checkpoint", "get_git_diff", "get_git_status"]:
+        return ToolCategory.GIT, PermissionLevel.WORKSPACE_WRITE
+
+    return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.READ_ONLY
 
 
 class AgentOrchestrator:
@@ -23,10 +49,15 @@ class AgentOrchestrator:
         host: str = "http://127.0.0.1:11434",
         system_prompt: str = SYSTEM_PROMPT,
         max_iterations: int = 15,
+        session_id: Optional[str] = None,
+        session_manager: Optional[SessionManager] = None,
+        permission_engine: Optional[PermissionEngine] = None,
+        telemetry_logger: Optional[TelemetryLogger] = None,
         on_thought: Optional[Callable[[str], None]] = None,
         on_token: Optional[Callable[[str], None]] = None,
         on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_tool_result: Optional[Callable[[str, str], None]] = None,
+        on_state_change: Optional[Callable[[AgentState], None]] = None,
         confirm_callback: Optional[Callable[[str], bool]] = None,
     ):
         self.model = model
@@ -47,13 +78,28 @@ class AgentOrchestrator:
 
         self.memory = ConversationMemory(system_prompt=system_prompt)
         self.hooks = HookManager(mode="agent")
+        self.permissions = permission_engine or PermissionEngine()
+        self.session_manager = session_manager or SessionManager()
+        self.telemetry = telemetry_logger or TelemetryLogger()
+
+        self.session_id = session_id or self.session_manager.create_session(model=self.model)
+        self.state = AgentState.IDLE
+        self.turn_counter = 0
 
         # Callbacks de UI (para Rich CLI)
         self.on_thought = on_thought
         self.on_token = on_token
         self.on_tool_call = on_tool_call
         self.on_tool_result = on_tool_result
+        self.on_state_change = on_state_change
         self.confirm_callback = confirm_callback
+
+    def set_state(self, new_state: AgentState):
+        """Actualiza el estado formal del agente y notifica a observadores."""
+        self.state = new_state
+        self.session_manager.update_session_state(self.session_id, new_state.value)
+        if self.on_state_change:
+            self.on_state_change(new_state)
 
     def check_ollama_alive(self) -> bool:
         """Verifica si el servicio de Ollama está respondiendo."""
@@ -166,14 +212,31 @@ class AgentOrchestrator:
 
         return extracted
 
-    def run_turn(self, user_prompt: str) -> str:
+    def run_turn(self, user_prompt: str, cancellation_token: Optional[CancellationToken] = None) -> str:
         """
         Ejecuta el bucle ReAct completo para una solicitud del usuario.
+        Monitorea el token de cancelación y registra métricas y persistencia.
         """
+        turn_start_time = time.perf_counter()
+        self.turn_counter += 1
+        current_turn = self.turn_counter
+
+        self.set_state(AgentState.RUNNING)
         self.memory.add_user_message(user_prompt)
+        self.session_manager.save_message(self.session_id, current_turn, role="user", content=user_prompt)
+
         final_answer = ""
+        total_tool_calls = 0
+        total_tool_failures = 0
 
         for iteration in range(1, self.max_iterations + 1):
+            # Comprobar si se solicitó cancelación
+            if cancellation_token and cancellation_token.is_cancelled:
+                self.set_state(AgentState.CANCELLED)
+                cancel_msg = cancellation_token.reason or "Operación cancelada por el usuario."
+                self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=cancel_msg)
+                return cancel_msg
+
             messages = self.memory.get_messages()
 
             payload = {
@@ -182,7 +245,7 @@ class AgentOrchestrator:
                 "tools": TOOLS_SCHEMA,
                 "stream": bool(self.on_token),
                 "options": {
-                    "temperature": 0.2,  # Baja temperatura para código preciso y tool-calling
+                    "temperature": 0.2,
                     "num_ctx": 8192,
                 }
             }
@@ -196,6 +259,8 @@ class AgentOrchestrator:
                         with client.stream("POST", f"{self.host}/api/chat", json=payload) as resp:
                             resp.raise_for_status()
                             for line in resp.iter_lines():
+                                if cancellation_token and cancellation_token.is_cancelled:
+                                    break
                                 if not line:
                                     continue
                                 chunk = json.loads(line)
@@ -214,14 +279,20 @@ class AgentOrchestrator:
                         content = msg.get("content", "")
                         tool_calls = msg.get("tool_calls", [])
             except httpx.ConnectError:
+                self.set_state(AgentState.FAILED)
                 return (
                     f"Error de conexión: No se pudo contactar a Ollama en {self.host}.\n"
                     "Asegúrate de que Ollama esté ejecutándose ('ollama serve')."
                 )
             except Exception as e:
+                self.set_state(AgentState.FAILED)
                 return f"Error al comunicar con Ollama: {str(e)}"
 
-            # Fallback inteligente: si Ollama no pobló tool_calls nativo pero incluyó llamadas en content
+            if cancellation_token and cancellation_token.is_cancelled:
+                self.set_state(AgentState.CANCELLED)
+                return cancellation_token.reason or "Operación cancelada por el usuario."
+
+            # Fallback inteligente
             if not tool_calls and content:
                 extracted = self._extract_tool_calls_from_content(content)
                 if extracted:
@@ -229,84 +300,144 @@ class AgentOrchestrator:
 
             # Notificar pensamiento limpio si no hubo streaming de tokens
             if content and self.on_thought and not self.on_token:
-                # Limpiar bloques JSON de herramientas para que el pensamiento sea 100% razonamiento humano
                 clean_thought = re.sub(r"```(?:json)?\s*\{[\s\S]*?\}\s*```", "", content).strip()
-                # También limpiar JSON crudo si el contenido era únicamente una llamada
                 if clean_thought.startswith("{") and clean_thought.endswith("}"):
                     clean_thought = ""
                 if clean_thought:
                     self.on_thought(clean_thought)
 
-            # Si el modelo no solicita ninguna herramienta, ha concluido su tarea
+            # Si el modelo no solicita ninguna herramienta, ha concluido
             if not tool_calls:
                 self.memory.add_assistant_message(content=content)
+                self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content)
                 final_answer = content
+                self.set_state(AgentState.COMPLETED)
                 break
 
-            # Si hay llamadas a herramientas, registrar el mensaje del asistente
+            # Si hay llamadas a herramientas, registrar mensaje
             self.memory.add_assistant_message(content=content, tool_calls=tool_calls)
+            self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content, tool_calls=tool_calls)
 
             # Procesar cada herramienta solicitada
             for tc in tool_calls:
+                if cancellation_token and cancellation_token.is_cancelled:
+                    self.set_state(AgentState.CANCELLED)
+                    return cancellation_token.reason or "Operación cancelada por el usuario."
+
+                total_tool_calls += 1
                 func_data = tc.get("function", {})
                 tool_name = func_data.get("name", "")
                 args = func_data.get("arguments", {})
 
-                # Si arguments viene serializado en string, parsearlo a dict
                 if isinstance(args, str):
                     try:
                         args = json.loads(args)
                     except Exception:
                         args = {}
 
+                category, perm_level = get_tool_metadata(tool_name)
+
                 # Notificar a la UI
                 if self.on_tool_call:
                     self.on_tool_call(tool_name, args)
 
-                # Pre-Tool Hook (Validación de políticas y modos estilo Claude Code)
+                # 1. Evaluación de Motor de Permisos y Límites de Workspace
+                target_p = args.get("path") or args.get("source")
+                cmd_p = args.get("command")
+                perm_req = PermissionRequest(
+                    tool_name=tool_name,
+                    category=category,
+                    level=perm_level,
+                    target_path=target_p,
+                    command=cmd_p,
+                    justification="Ejecución de acción autónoma de AETHER",
+                )
+
+                decision, reason = self.permissions.evaluate(perm_req)
+                if decision == PermissionDecision.DENY:
+                    tool_result = f"⛔ Denegado por política de permisos: {reason}"
+                    total_tool_failures += 1
+                    self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
+                    continue
+
+                # 2. Pre-Tool Hook (Validación de políticas y modos de operación)
                 allowed, hook_reason = self.hooks.pre_tool_use(tool_name, args)
                 if not allowed:
                     tool_result = f"Bloqueado por Hook Pre-Tool ({self.hooks.mode}): {hook_reason}"
-                    self.memory.add_tool_result(name=tool_name, content=tool_result)
-                    if self.on_tool_result:
-                        self.on_tool_result(tool_name, tool_result)
+                    total_tool_failures += 1
+                    self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
                     continue
 
-                # Control de seguridad: Si es un comando de shell, evaluar peligrosidad
+                # 3. Control de seguridad para comandos de consola
                 if tool_name == "run_command":
                     cmd_str = args.get("command", "")
-                    is_safe, reason = check_command_safety(cmd_str)
+                    is_safe, sec_reason = check_command_safety(cmd_str)
                     if not is_safe:
                         should_run = False
                         if self.confirm_callback:
                             should_run = self.confirm_callback(
-                                f"Comando de riesgo detectado: '{cmd_str}'\nMotivo: {reason}\n¿Deseas permitir su ejecución?"
+                                f"Comando de riesgo detectado: '{cmd_str}'\nMotivo: {sec_reason}\n¿Deseas permitir su ejecución?"
                             )
                         if not should_run:
-                            tool_result = f"Ejecución bloqueada por seguridad: {reason}"
-                            self.memory.add_tool_result(name=tool_name, content=tool_result)
-                            if self.on_tool_result:
-                                self.on_tool_result(tool_name, tool_result)
+                            tool_result = f"Ejecución bloqueada por seguridad: {sec_reason}"
+                            total_tool_failures += 1
+                            self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
                             continue
 
-                # Ejecutar la herramienta en el sistema
+                # 4. Ejecución de la herramienta con cronometraje
+                tool_start = time.perf_counter()
                 tool_result = execute_tool(tool_name, args)
+                tool_dur_ms = (time.perf_counter() - tool_start) * 1000.0
 
-                # Post-Tool Hook (Validaciones posteriores y enriquecimiento de feedback)
+                # 5. Post-Tool Hook
                 tool_result = self.hooks.post_tool_use(tool_name, args, tool_result)
 
-                # Si ocurrió un fallo o error en la herramienta, guiar al modelo para auto-sanación
-                if ("Error" in tool_result or "Código de salida: 1" in tool_result or "falló" in tool_result.lower()) and iteration < self.max_iterations:
-                    tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file o write_file y vuelve a probar."
+                is_success = not ("Error" in tool_result or "Código de salida: 1" in tool_result or "falló" in tool_result.lower())
+                if not is_success:
+                    total_tool_failures += 1
+                    if iteration < self.max_iterations:
+                        tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
 
-                if self.on_tool_result:
-                    self.on_tool_result(tool_name, tool_result)
-
-                # Alimentar el resultado de vuelta a la memoria
-                self.memory.add_tool_result(name=tool_name, content=tool_result)
+                self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
 
         if not final_answer:
             final_answer = "La tarea alcanzó el número máximo de iteraciones sin finalizar formalmente."
+            self.set_state(AgentState.COMPLETED)
+
+        turn_duration = time.perf_counter() - turn_start_time
+        self.telemetry.record_turn(
+            session_id=self.session_id,
+            turn_index=current_turn,
+            model=self.model,
+            duration_seconds=turn_duration,
+            tool_calls_count=total_tool_calls,
+            tool_failures_count=total_tool_failures,
+            user_prompt_length=len(user_prompt),
+            agent_response_length=len(final_answer),
+        )
 
         return final_answer
 
+    def _record_and_feed_result(self, tool_name: str, args: Dict[str, Any], result: str, success: bool, latency_ms: float):
+        """Registra en UI, Memoria, Persistencia SQLite y Telemetría el resultado de una herramienta."""
+        if self.on_tool_result:
+            self.on_tool_result(tool_name, result)
+
+        self.memory.add_tool_result(name=tool_name, content=result)
+        self.session_manager.record_tool_execution(
+            session_id=self.session_id,
+            tool_name=tool_name,
+            args=args,
+            result=result,
+            success=success,
+            latency_ms=latency_ms,
+        )
+        category, _ = get_tool_metadata(tool_name)
+        self.telemetry.record_tool_execution(
+            session_id=self.session_id,
+            tool_name=tool_name,
+            category=category.value,
+            duration_ms=latency_ms,
+            success=success,
+            error=None if success else result[:100],
+        )
