@@ -47,6 +47,11 @@ class ConversationMemory:
         """Reinicia la memoria conservando únicamente el system prompt."""
         self.messages = [{"role": "system", "content": self.system_prompt}]
 
+    def estimate_tokens(self) -> int:
+        """Estima los tokens del contexto (~4 caracteres por token)."""
+        total_chars = sum(len(str(m.get("content", ""))) for m in self.messages)
+        return total_chars // 4
+
     def _trim_if_needed(self):
         """
         Conserva siempre el system prompt (índice 0) y el mensaje de solicitud original (índice 1).

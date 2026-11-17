@@ -267,6 +267,10 @@ class AgentOrchestrator:
                 # Ejecutar la herramienta en el sistema
                 tool_result = execute_tool(tool_name, args)
 
+                # Si ocurrió un fallo o error en la herramienta, guiar al modelo para auto-sanación
+                if ("Error" in tool_result or "Código de salida: 1" in tool_result or "falló" in tool_result.lower()) and iteration < self.max_iterations:
+                    tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file o write_file y vuelve a probar."
+
                 if self.on_tool_result:
                     self.on_tool_result(tool_name, tool_result)
 

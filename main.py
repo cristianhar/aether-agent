@@ -157,8 +157,16 @@ def main():
             continue
 
         elif user_input == "/status":
-            status = get_git_status()
-            console.print(Panel(status, title="Git Status"))
+            git_st = get_git_status()
+            token_count = orchestrator.memory.estimate_tokens()
+            msg_count = len(orchestrator.memory.get_messages())
+            status_report = f"""[bold]Modelo:[/] {orchestrator.model}
+[bold]Mensajes en Contexto:[/] {msg_count} turnos (~{token_count} tokens)
+[bold]Directorio:[/] {Path.cwd()}
+
+[bold cyan]--- Estado de Git ---[/bold cyan]
+{git_st}"""
+            console.print(Panel(status_report, title="[bold green]📊 Estado del Sistema AETHER[/bold green]", border_style="green"))
             continue
 
         elif user_input == "/undo":
