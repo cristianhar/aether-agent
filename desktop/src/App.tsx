@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
+  Terminal,
   FileCode,
   Play,
   RotateCcw,
@@ -8,6 +9,7 @@ import {
   GitBranch,
   Cpu,
   Save,
+  CheckCircle2,
   Square,
   RefreshCw,
   FolderTree,
@@ -44,7 +46,6 @@ export default function App() {
     fetchStatus();
     fetchTree();
     fetchDiff();
-    loadFile("main.py");
   }, []);
 
   async function fetchStatus() {
@@ -52,7 +53,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/status`);
       if (res.ok) {
         const data = await res.json();
-        setVramInfo(data.vram_info || "RTX 4060 · Online");
+        setVramInfo(data.vram_info || "Online");
       }
     } catch {
       setVramInfo("Bridge desconectado (Inicia bridge/server.py)");
@@ -74,7 +75,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/diff`);
       if (res.ok) {
         const data = await res.json();
-        setGitDiff(data.diff || "# No hay cambios pendientes de commit.");
+        setGitDiff(data.diff || "No hay cambios pendientes de commit.");
       }
     } catch {}
   }
@@ -98,7 +99,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: selectedFile, content: fileContent }),
+        body: jsonBody({ path: selectedFile, content: fileContent }),
       });
       if (res.ok) {
         setOriginalContent(fileContent);
@@ -108,6 +109,10 @@ export default function App() {
     } catch (err) {
       alert(`Error guardando: ${err}`);
     }
+  }
+
+  function jsonBody(data: any): string {
+    return JSON.stringify(data);
   }
 
   async function handleSendPrompt(e?: React.FormEvent) {
@@ -123,7 +128,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userMsg }),
+        body: jsonBody({ prompt: userMsg }),
       });
 
       if (res.ok) {
@@ -134,7 +139,6 @@ export default function App() {
         ]);
         fetchDiff();
         fetchTree();
-        loadFile(selectedFile);
       } else {
         const err = await res.json();
         setMessages((prev) => [
@@ -162,8 +166,6 @@ export default function App() {
     setIsRunning(false);
   }
 
-  const quickFiles = ["main.py", "agent/orchestrator.py", "tools/registry.py", "README.md"];
-
   return (
     <div className="aether-ide-root">
       {/* Top Navigation Bar */}
@@ -174,15 +176,15 @@ export default function App() {
           <span className="badge-tauri">Tauri v2 · Desktop</span>
         </div>
         <div className="status-badges">
-          <div className="badge" title="VRAM Hardware Guard">
+          <div className="badge">
             <Cpu size={14} />
-            <span>{vramInfo}</span>
+            <span>RTX 4060 · Qwen2.5-Coder 7B</span>
           </div>
           <div className="badge">
             <GitBranch size={14} />
             <span>main</span>
           </div>
-          <button className="btn-save" onClick={saveFile} title="Guardar archivo">
+          <button className="btn-save" onClick={saveFile}>
             <Save size={14} /> Guardar
           </button>
         </div>
@@ -198,18 +200,6 @@ export default function App() {
             <button className="btn-icon" onClick={fetchTree} title="Actualizar mapa">
               <RefreshCw size={12} />
             </button>
-          </div>
-          <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-color)", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-            {quickFiles.map((qf) => (
-              <button
-                key={qf}
-                className="btn-icon"
-                style={{ fontSize: "11px", padding: "2px 6px", background: selectedFile === qf ? "var(--bg-hover)" : "transparent", color: "var(--text-main)" }}
-                onClick={() => loadFile(qf)}
-              >
-                {qf.split("/").pop()}
-              </button>
-            ))}
           </div>
           <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico..."}</pre>
         </aside>
@@ -231,14 +221,6 @@ export default function App() {
               }}
             >
               <GitBranch size={14} /> Git Diff
-            </button>
-            <button
-              className="btn-icon"
-              style={{ marginLeft: "auto", marginRight: "10px" }}
-              title="Recargar archivo del disco"
-              onClick={() => loadFile(selectedFile)}
-            >
-              <RotateCcw size={13} />
             </button>
           </div>
 
@@ -264,7 +246,7 @@ export default function App() {
                 height="100%"
                 theme="vs-dark"
                 original={originalContent}
-                modified={gitDiff}
+                modified={fileContent}
                 language="python"
                 options={{
                   readOnly: true,

@@ -42,16 +42,17 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 class AetherBridgeHandler(BaseHTTPRequestHandler):
     """Manejador HTTP/JSON-RPC para comunicación de alta velocidad con Tauri."""
 
-    def _set_cors_headers(self, status: int = 200, content_type: str = "application/json"):
+    def _set_cors_headers(self, status: int = 200, content_type: str = "application/json", content_length: int = 0):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(content_length))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_OPTIONS(self):
-        self._set_cors_headers(200)
+        self._set_cors_headers(200, content_length=0)
 
     def _read_json_body(self) -> Dict[str, Any]:
         try:
@@ -64,8 +65,9 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
         return {}
 
     def _send_json(self, data: Any, status: int = 200):
-        self._set_cors_headers(status)
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self._set_cors_headers(status=status, content_type="application/json; charset=utf-8", content_length=len(payload))
+        self.wfile.write(payload)
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
