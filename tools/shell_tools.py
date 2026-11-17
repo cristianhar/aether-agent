@@ -4,6 +4,7 @@ Captura stdout, stderr y código de salida con límite de tiempo de seguridad.
 """
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -58,6 +59,39 @@ def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, st
             "💡 [DIAGNÓSTICO DE ENTRADA INTERACTIVA]: El comando falló por EOFError porque el script ejecutó input() en una terminal no interactiva.\n"
             "• Para testear scripts con input(), valida su sintaxis con 'python -m py_compile <archivo>.py' o 'python -c \"import <modulo>\"'.\n"
             "• NUNCA intentes editar el archivo buscando 'EOFError'; este texto proviene de la consola, no del archivo."
+        )
+
+    # 4. Detección de discrepancia numérica en aserciones de tests (unittest / pytest)
+    if "assertionerror" in combined or "failed (failures=" in combined:
+        assert_m = re.search(r"assertionerror:\s*([0-9\.\-]+)\s*!=\s*([0-9\.\-]+)", f"{stdout}\n{stderr}", re.IGNORECASE)
+        if not assert_m:
+            assert_m = re.search(r"assert\s+([0-9\.\-]+)\s*==\s*([0-9\.\-]+)", f"{stdout}\n{stderr}", re.IGNORECASE)
+
+        if assert_m:
+            actual_str, expected_str = assert_m.group(1), assert_m.group(2)
+            try:
+                act_num = float(actual_str)
+                act_rounded = round(act_num, 2)
+            except ValueError:
+                act_rounded = actual_str
+
+            hints.append(
+                f"💡 [DIAGNÓSTICO AUTOMÁTICO DE DISCREPANCIA EN TEST]:\n"
+                f"• Tu código en ejecución produjo el valor REAL: {actual_str} (aprox: {act_rounded}).\n"
+                f"• Tu archivo de prueba esperaba: {expected_str}.\n"
+                f"• REGLA FUNDAMENTAL: En Python, el primer valor ({actual_str}) es lo que tu función realmente devuelve.\n"
+                f"• Si tu código usa 'statistics.stdev([1, 2, 3, 4, 5])', calcula desviación MUESTRAL (N-1) y da 1.58 (NO 1.41, que sería poblacional pstdev).\n"
+                f"• ACCIÓN INMEDIATA CON edit_file: Abre el archivo de prueba ('test_...py') y actualiza el valor esperado a {act_rounded} (o {actual_str}):\n"
+                f"  self.assertAlmostEqual(..., {act_rounded}, places=2)\n"
+                f"• ADVERTENCIA DE FRAMEWORK: Si usas unittest, NUNCA uses 'pytest.approx' dentro de 'assertAlmostEqual'."
+            )
+
+    # 5. Detección de incompatibilidad pytest.approx en unittest
+    if "approxscalar" in combined or ("approx" in combined and ("typeerror" in combined or "nameerror" in combined) and "unittest" in command.lower()):
+        hints.append(
+            "⚠️ [INCOMPATIBILIDAD DE FRAMEWORK DE TEST]: Has mezclado 'pytest.approx' dentro de 'unittest.TestCase'.\n"
+            "• 'pytest.approx' NO es compatible con 'self.assertAlmostEqual()'.\n"
+            "• Para unittest: usa ÚNICAMENTE 'self.assertAlmostEqual(actual, esperado, places=2)'. Elimina 'pytest.approx' y 'import pytest'."
         )
 
     # 3. Detección de archivo Python inexistente en CWD pero existente en subcarpeta

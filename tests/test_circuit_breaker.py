@@ -193,3 +193,38 @@ def test_persistent_assertion_error_regex():
     match = re.search(r"(AssertionError:[^\n\r]+)", result_mock)
     assert match is not None
     assert "1.581138830084 != 1.4142135623730951" in match.group(1)
+
+
+def test_shell_diagnostics_detects_assertion_error_discrepancy():
+    """Verifica que shell diagnostics extraiga los valores real y esperado e instruya la corrección."""
+    from tools.shell_tools import _generate_shell_diagnostics
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        diag = _generate_shell_diagnostics(
+            command="python -m unittest test_calculadora_stats.py",
+            work_dir=Path(tmp_dir),
+            exit_code=1,
+            stdout="",
+            stderr="AssertionError: 1.5811388300841898 != 1.41 within 2 places (0.17113883008418984 difference)"
+        )
+        assert diag is not None
+        assert "DIAGNÓSTICO AUTOMÁTICO DE DISCREPANCIA EN TEST" in diag
+        assert "1.5811388300841898" in diag
+        assert "1.41" in diag
+        assert "1.58" in diag
+        assert "assertAlmostEqual" in diag
+
+
+def test_shell_diagnostics_detects_pytest_approx_in_unittest():
+    """Verifica que se alerte si se intenta mezclar pytest.approx en unittest."""
+    from tools.shell_tools import _generate_shell_diagnostics
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        diag = _generate_shell_diagnostics(
+            command="python -m unittest test_calculadora_stats.py",
+            work_dir=Path(tmp_dir),
+            exit_code=1,
+            stdout="",
+            stderr="TypeError: unsupported operand type(s) for -: 'float' and '_pytest.python_api.ApproxScalar'"
+        )
+        assert diag is not None
+        assert "INCOMPATIBILIDAD DE FRAMEWORK DE TEST" in diag
+        assert "pytest.approx" in diag

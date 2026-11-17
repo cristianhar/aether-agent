@@ -484,10 +484,6 @@ class AgentOrchestrator:
                         if target_path:
                             known_syntax_error_files.discard(target_path)
                             known_syntax_error_files.discard(Path(target_path).name)
-                            # Si se modificó el archivo de pruebas, resetear contador de aserciones persistentes
-                            if "test" in Path(target_path).name.lower():
-                                last_assertion_error = None
-                                assertion_error_repeat_count = 0
                     elif has_syntax_err and target_path:
                         known_syntax_error_files.add(target_path)
                         known_syntax_error_files.add(Path(target_path).name)
@@ -527,12 +523,16 @@ class AgentOrchestrator:
                                 tool_result += (
                                     f"\n🚨 [CIRCUIT BREAKER - ASERCIÓN PERSISTENTE ({assertion_error_repeat_count} veces)]:\n"
                                     f"La prueba sigue fallando con el mismo error: '{err_line}'.\n"
-                                    "Tus modificaciones previas en el archivo de implementación NO están resolviendo el fallo.\n"
-                                    "• CAUSA MUY PROBABLE: El valor esperado (assert) en tu archivo de prueba está mal calculado matemáticamente o difiere del resultado real de Python.\n"
-                                    "• ACCIÓN OBLIGATORIA: Abre el archivo de pruebas ('test_...py') y actualiza el valor esperado con el valor real que arroja Python o usa tolerancia (assertAlmostEqual / pytest.approx). NO sigas alterando el redondeo en el archivo principal."
+                                    "Tus modificaciones previas NO están resolviendo el fallo.\n"
+                                    "• Si el error compara dos números (ej: X != Y), el primer número (X) es el valor REAL generado por Python.\n"
+                                    "• ACCIÓN OBLIGATORIA: Abre el archivo de pruebas ('test_...py') y cambia el valor esperado por el valor real de Python.\n"
+                                    "• Si usas unittest, usa self.assertAlmostEqual(actual, esperado, places=2). NUNCA uses pytest.approx dentro de unittest."
                                 )
                     else:
                         failed_commands.discard(cmd_norm)
+                        last_failed_tool_key = None
+                        last_assertion_error = None
+                        assertion_error_repeat_count = 0
                         last_failed_tool_key = None
 
                 if not is_success:
