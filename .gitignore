@@ -44,3 +44,8 @@ Thumbs.db
 # AETHER Runtime Data
 .aether/
 
+# Node / Tauri / Rust
+node_modules/
+target/
+dist/
+

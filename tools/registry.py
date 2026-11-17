@@ -19,6 +19,7 @@ from tools.process_manager import ProcessManager
 from tools.agent_tools import update_plan, request_approval, get_project_instructions
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
+from tools.mcp_client import list_mcp_tools, call_mcp_tool_wrapper
 
 # Esquemas de herramientas compatibles con Ollama / OpenAI
 TOOLS_SCHEMA: List[Dict[str, Any]] = [
@@ -632,6 +633,42 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "required": ["skill_name"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_mcp_tools",
+            "description": "MCP Client: Descubre y lista todas las herramientas disponibles exportadas por servidores MCP configurados.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "call_mcp_tool",
+            "description": "MCP Client: Ejecuta una herramienta externa en un servidor MCP conectado vía JSON-RPC 2.0.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {
+                        "type": "string",
+                        "description": "Nombre del servidor MCP registrado."
+                    },
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Nombre de la herramienta en el servidor MCP."
+                    },
+                    "arguments": {
+                        "type": "object",
+                        "description": "Diccionario de argumentos para la herramienta."
+                    }
+                },
+                "required": ["server_name", "tool_name"]
+            }
+        }
     }
 ]
 
@@ -738,6 +775,8 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "get_dependencies": get_dependencies,
     "get_hardware_vram_status": get_hardware_vram_status,
     "execute_skill": execute_skill_tool,
+    "list_mcp_tools": list_mcp_tools,
+    "call_mcp_tool": call_mcp_tool_wrapper,
 }
 
 

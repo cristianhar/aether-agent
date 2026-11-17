@@ -6,7 +6,7 @@
 
 **Agente Autónomo de Ingeniería de Software Local y CLI Interactiva**
 
-[![Tests](https://img.shields.io/badge/pruebas-61%20pasadas-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/pruebas-63%20pasadas-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
 [![Repositorio](https://img.shields.io/badge/github-cristianhar%2Faether--agent-181717?logo=github)](https://github.com/cristianhar/aether-agent)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-purple.svg)]()
@@ -41,6 +41,7 @@ A diferencia de los chats pasivos, AETHER opera como un ingeniero de software ac
 | **Telemetría y Rendimiento** | Registro JSONL de latencias y reporte resumido (`/telemetry`) | Visibilidad en tiempo real de tiempos de inferencia y tasa de éxito de herramientas. |
 | **Repo-Map Compacto** | Extracción sintáctica AST de clases, firmas y métodos | Mapea proyectos enteros en ~300 tokens sin saturar la memoria de contexto. |
 | **Diagnósticos Estáticos AST** | Validación de sintaxis para Python y JSON (`get_diagnostics`) | Comprueba la validez sintáctica del código antes y después de aplicar cambios. |
+| **Model Context Protocol (MCP)** | Cliente stdio JSON-RPC 2.0 con `tools/list` y `tools/call` | Conecta servidores MCP externos configurados en `.aether/mcp_servers.json`. |
 | **Modos de Trabajo** | Sistema de hooks con soporte para `/mode ask`, `/mode agent`, `/mode plan` | Modo de solo lectura en `ask`; creación y ejecución con plenos poderes en `agent`. |
 | **Subagentes Lógicos** | Contextos de conversación aislados compartiendo el modelo local | Delega investigaciones pesadas o auditorías a subagentes auxiliares sin ensuciar la memoria principal. |
 

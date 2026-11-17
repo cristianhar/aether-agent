@@ -11,12 +11,16 @@ def test_process_manager_background_execution_and_status():
     proc_id = pm.start_process(cmd)
     assert proc_id.startswith("proc_")
 
-    # Esperar brevemente a que el hilo capture stdout
-    time.sleep(1.0)
+    # Esperar hasta que el proceso termine y capture stdout
+    for _ in range(30):
+        time.sleep(0.1)
+        status = pm.get_status(proc_id)
+        if not status.get("is_running", True) and "FINISHED_PROCESS" in status.get("stdout", ""):
+            break
 
     status = pm.get_status(proc_id)
     assert status["success"] is True
-    assert "STARTED_PROCESS" in status["stdout"]
+    assert "STARTED_PROCESS" in status["stdout"], f"Stderr was: {status.get('stderr')}"
     assert "FINISHED_PROCESS" in status["stdout"]
     assert status["is_running"] is False
     assert status["exit_code"] == 0

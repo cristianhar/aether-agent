@@ -29,7 +29,8 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
     if name in [
         "read_file", "search_codebase", "list_directory", "get_file_outline",
         "get_repo_map", "get_diagnostics", "get_process_status",
-        "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status"
+        "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
+        "list_mcp_tools"
     ]:
         category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
@@ -37,7 +38,7 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
     if name in ["write_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
         return ToolCategory.FILESYSTEM, PermissionLevel.WORKSPACE_WRITE
 
-    if name in ["run_command", "run_tests", "start_background_process", "cancel_process"]:
+    if name in ["run_command", "run_tests", "start_background_process", "cancel_process", "call_mcp_tool"]:
         return ToolCategory.EXECUTION, PermissionLevel.COMMAND_EXECUTE
 
     if name in ["create_checkpoint", "undo_checkpoint", "safe_checkpoint", "safe_undo_checkpoint", "get_git_diff", "get_git_status"]:

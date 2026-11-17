@@ -13,7 +13,7 @@ from typing import List, Optional
 
 IGNORE_DIRS = {
     ".git", ".venv", "venv", "__pycache__", "node_modules",
-    ".pytest_cache", ".idea", ".vscode", "dist", "build", "egg-info"
+    ".pytest_cache", ".idea", ".vscode", "dist", "build", "egg-info", "target"
 }
 
 IGNORE_EXTENSIONS = {

@@ -79,7 +79,7 @@ def test_web_search_and_fetch():
 
 
 def test_repo_map_generator():
-    repo_map = generate_repo_map(".", max_files=50)
+    repo_map = generate_repo_map(".", max_files=100)
     assert "REPO-MAP" in repo_map
     assert "tools/" in repo_map
     assert "main.py" in repo_map
