@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
+import uuid
 
 
 def _file_sha256(path: Path) -> str:
@@ -39,8 +40,9 @@ class SafeCheckpointManager:
         Crea un snapshot de los archivos indicados (o de los archivos modificados recientemente).
         Guarda las pre-imágenes y un manifest.json.
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        snapshot_id = f"chk_{timestamp}_{int(datetime.now().timestamp() * 1000) % 1000:03d}"
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        snapshot_id = f"chk_{timestamp}_{now.microsecond:06d}_{uuid.uuid4().hex[:6]}"
         snapshot_path = self.checkpoints_dir / snapshot_id
         snapshot_path.mkdir(parents=True, exist_ok=True)
 
