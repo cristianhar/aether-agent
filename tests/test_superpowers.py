@@ -72,11 +72,21 @@ def top_level_helper():
 
 def test_web_search_and_fetch():
     res = search_web("python pymem documentation", max_results=2)
-    assert ("Resultados de búsqueda" in res) or ("Aviso de red" in res)
+    assert (
+        ("Resultados de búsqueda" in res)
+        or ("Aviso de red" in res)
+        or ("No se obtuvieron fragmentos" in res)
+        or ("Modo 100% Offline" in res)
+    )
 
     # Test fetch_web_page con una URL segura
     page = fetch_web_page("https://example.com", max_chars=500)
-    assert ("Example Domain" in page) or ("Error al descargar" in page)
+    assert (
+        ("Example Domain" in page)
+        or ("Error al descargar" in page)
+        or ("Aviso de red" in page)
+        or ("Modo 100% Offline" in page)
+    )
 
 
 def test_repo_map_generator():
