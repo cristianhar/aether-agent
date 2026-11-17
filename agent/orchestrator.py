@@ -4,6 +4,7 @@ Maneja la comunicación con Ollama, ejecución de herramientas y bucle de autoco
 """
 
 import json
+from pathlib import Path
 import re
 from typing import Any, Callable, Dict, List, Optional
 import httpx
@@ -30,6 +31,19 @@ class AgentOrchestrator:
         self.model = model
         self.host = host.rstrip("/")
         self.max_iterations = max_iterations
+
+        # Ingestión de reglas de proyecto (.aetherrules, CONVENTIONS.md o .cursorrules)
+        for rules_name in [".aetherrules", "CONVENTIONS.md", ".cursorrules"]:
+            rules_path = Path.cwd() / rules_name
+            if rules_path.exists():
+                try:
+                    custom_rules = rules_path.read_text(encoding="utf-8").strip()
+                    if custom_rules:
+                        system_prompt += f"\n\n<custom_project_rules source='{rules_name}'>\n{custom_rules}\n</custom_project_rules>"
+                        break
+                except Exception:
+                    pass
+
         self.memory = ConversationMemory(system_prompt=system_prompt)
 
         # Callbacks de UI (para Rich CLI)

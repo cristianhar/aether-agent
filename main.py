@@ -3,6 +3,7 @@ Punto de entrada de la consola interactiva CLI para AETHER Agent.
 Interfaz enriquecida construida con 'rich' y 'prompt_toolkit'.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,7 +32,7 @@ def render_banner(model_name: str, ollama_ok: bool):
 [bold]Estado de inferencia:[/] [{status_color}]{status_text}[/{status_color}]
 [bold]Directorio de trabajo:[/] [yellow]{Path.cwd()}[/yellow]
 
-[dim]Comandos especiales: /map | /test | /commit | /diff | /undo | /checkpoint | /model <nombre> | /voice | /clear | /exit[/dim]
+[dim]Comandos: /cd <ruta> | /map | /test | /commit | /diff | /export | /undo | /model <nombre> | /clear | /exit[/dim]
 """
     console.print(Panel(banner_text, border_style="cyan", title="[bold]AETHER v0.1.0[/bold]"))
 
@@ -106,6 +107,23 @@ def main():
             console.print("[dim]Sesión finalizada. ¡Hasta pronto![/dim]")
             break
 
+        elif user_input.startswith("/cd"):
+            target_dir = user_input[len("/cd"):].strip()
+            if not target_dir:
+                console.print(f"[bold yellow]Directorio actual:[/] {Path.cwd()}")
+            else:
+                p = Path(target_dir).expanduser().resolve()
+                if p.exists() and p.is_dir():
+                    os.chdir(p)
+                    console.print(f"[bold green]Directorio cambiado a:[/] {p}")
+                    orchestrator.memory.clear()
+                    console.print("[dim]Contexto reiniciado para el nuevo proyecto.[/dim]")
+                    repo_map = generate_repo_map(str(p), max_files=15)
+                    console.print(Panel(repo_map, title=f"[bold cyan]📦 Repo-Map de {p.name}[/bold cyan]", border_style="cyan"))
+                else:
+                    console.print(f"[bold red]Error:[/] La ruta '{target_dir}' no existe o no es un directorio válido.")
+            continue
+
         elif user_input == "/map":
             repo_map = generate_repo_map()
             console.print(Panel(repo_map, title="[bold cyan]📦 Arquitectura del Repositorio (Repo-Map)[/bold cyan]", border_style="cyan"))
@@ -149,6 +167,20 @@ def main():
                 console.print(f"[bold green]✅ Commit realizado:[/] {commit_msg}")
             else:
                 console.print(f"[bold red]Error en commit:[/] {res.stderr.strip() or res.stdout.strip()}")
+            continue
+
+        elif user_input.startswith("/export"):
+            filename = user_input[len("/export"):].strip() or f"aether_sesion_{Path.cwd().name}.md"
+            msgs = orchestrator.memory.get_messages()
+            md_lines = [f"# Sesión AETHER IDE — {Path.cwd().name}\n"]
+            for m in msgs:
+                role = m.get("role", "").upper()
+                content = m.get("content", "")
+                if role != "SYSTEM" and content:
+                    md_lines.append(f"### {role}:\n{content}\n")
+            out_path = Path.cwd() / filename
+            out_path.write_text("\n".join(md_lines), encoding="utf-8")
+            console.print(f"[bold green]✅ Sesión exportada exitosamente a:[/] {out_path}")
             continue
 
         elif user_input == "/diff":
@@ -210,11 +242,13 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
         elif user_input == "/help":
             help_text = """
 ### 🛠️ Comandos Especiales Slash (`/`):
+- **/cd <ruta>**: Cambia el directorio de trabajo dinámicamente a cualquier proyecto de tu PC.
 - **/map**: Muestra el mapa arquitectónico completo del repositorio (archivos, clases, funciones).
 - **/test [archivo]**: Ejecuta pruebas con pytest y ofrece auto-sanación instantánea si algo falla.
 - **/commit [mensaje]**: Hace `git add -A` y commit de todos los cambios de forma limpia.
 - **/diff**: Muestra los cambios actuales de código frente al último commit con resaltado de sintaxis.
-- **/status**: Muestra el estado de archivos modificados en Git.
+- **/export [archivo]**: Exporta la sesión completa y código generado a un documento Markdown.
+- **/status**: Muestra el estado de archivos en Git y telemetría de tokens en VRAM.
 - **/undo**: Revierte al último checkpoint seguro en 1 segundo.
 - **/checkpoint [mensaje]**: Guarda un punto de restauración seguro con Git.
 - **/model <nombre>**: Cambia el modelo de Ollama en caliente (ej: `/model qwen2.5-coder:7b`).
