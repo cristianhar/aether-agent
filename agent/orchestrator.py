@@ -211,9 +211,15 @@ class AgentOrchestrator:
                 if extracted:
                     tool_calls = extracted
 
-            # Notificar pensamiento si no hubo streaming de tokens
+            # Notificar pensamiento limpio si no hubo streaming de tokens
             if content and self.on_thought and not self.on_token:
-                self.on_thought(content)
+                # Limpiar bloques JSON de herramientas para que el pensamiento sea 100% razonamiento humano
+                clean_thought = re.sub(r"```(?:json)?\s*\{[\s\S]*?\}\s*```", "", content).strip()
+                # También limpiar JSON crudo si el contenido era únicamente una llamada
+                if clean_thought.startswith("{") and clean_thought.endswith("}"):
+                    clean_thought = ""
+                if clean_thought:
+                    self.on_thought(clean_thought)
 
             # Si el modelo no solicita ninguna herramienta, ha concluido su tarea
             if not tool_calls:

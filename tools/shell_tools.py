@@ -19,12 +19,24 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
         return f"Error: El directorio de trabajo especificado '{cwd}' no existe."
 
     try:
+        normalized_command = command.strip()
         if os.name == "nt":
-            args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
+            # Normalización inteligente de comandos Linux/POSIX hacia Windows
+            if normalized_command.startswith("python3 "):
+                normalized_command = "python " + normalized_command[8:]
+            elif normalized_command.startswith("pip3 "):
+                normalized_command = "pip " + normalized_command[5:]
+            elif normalized_command == "python3":
+                normalized_command = "python"
+            elif normalized_command == "pip3":
+                normalized_command = "pip"
+
+            args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", normalized_command]
             process = subprocess.run(
                 args,
                 cwd=str(work_dir),
                 shell=False,
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -37,6 +49,7 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
                 cwd=str(work_dir),
                 shell=True,
                 executable="/bin/bash" if Path("/bin/bash").exists() else None,
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
