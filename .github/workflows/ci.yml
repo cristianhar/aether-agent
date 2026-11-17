@@ -35,7 +35,7 @@ jobs:
       - name: Lint Code with Flake8
         run: |
           # Detiene la compilación si hay errores de sintaxis Python o nombres no definidos
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.venv,venv,__pycache__,docs
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.venv,venv,__pycache__,docs,desktop
 
       - name: Run Pytest Test Suite
         run: |

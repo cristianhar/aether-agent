@@ -72,7 +72,6 @@ def request_approval(action_description: str, risk_level: str = "high") -> str:
     """
     Solicita autorización explícita al usuario humano antes de ejecutar una acción sensible.
     """
-    global _APPROVAL_CALLBACK
     if _APPROVAL_CALLBACK is not None:
         approved = _APPROVAL_CALLBACK(action_description, risk_level)
         if approved:

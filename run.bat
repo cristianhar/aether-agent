@@ -49,14 +49,25 @@ start "AETHER_BRIDGE_SERVER" /min cmd /c ""%~dp0.venv\Scripts\python.exe" "%~dp0
 
 REM Esperar respuesta del puente
 echo       Esperando conexion con el puente...
+set BRIDGE_OK=0
 for /L %%i in (1,1,10) do (
     curl.exe --connect-timeout 1 -s http://127.0.0.1:8765/api/status >nul 2>&1
-    if not errorlevel 1 goto BRIDGE_READY
+    if not errorlevel 1 (
+        set BRIDGE_OK=1
+        goto BRIDGE_READY
+    )
     ping 127.0.0.1 -n 2 >nul
 )
 
 :BRIDGE_READY
-echo       [OK] Servidor Puente conectado y respondiendo.
+if "%BRIDGE_OK%"=="0" (
+    echo       [AVISO] El puente en segundo plano no respondio a tiempo.
+    echo       Iniciando Servidor Puente en consola visible para monitoreo...
+    start "AETHER_BRIDGE_DEBUG" cmd /k ""%~dp0.venv\Scripts\python.exe" "%~dp0bridge\server.py""
+    ping 127.0.0.1 -n 3 >nul
+) else (
+    echo       [OK] Servidor Puente conectado y respondiendo en http://127.0.0.1:8765.
+)
 
 echo.
 echo ======================================================================
@@ -74,6 +85,7 @@ REM Limpieza al salir
 echo.
 echo [AETHER] Cerrando procesos en segundo plano...
 taskkill /fi "WINDOWTITLE eq AETHER_BRIDGE_SERVER*" /t /f >nul 2>&1
+taskkill /fi "WINDOWTITLE eq AETHER_BRIDGE_DEBUG*" /t /f >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8765" ^| findstr "LISTENING"') do (
     taskkill /f /pid %%a >nul 2>&1
 )

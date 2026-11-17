@@ -14,6 +14,11 @@ import threading
 from typing import Any, Dict, Optional
 import urllib.parse
 
+# Asegurar que la raíz del proyecto esté en sys.path independientemente de dónde se ejecute
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from agent.orchestrator import AgentOrchestrator
 from agent.session import SessionManager
 from agent.state import AgentState, CancellationToken
