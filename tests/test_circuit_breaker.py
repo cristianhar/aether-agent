@@ -100,6 +100,43 @@ def test_edit_file_rejects_traceback_as_target():
         assert "read_file" in res
 
 
+def test_circuit_breaker_prevents_ping_pong_loop():
+    """El circuit breaker no debe desbloquear un comando que falló solo porque otro comando diferente tuvo éxito."""
+    orch = AgentOrchestrator()
+
+    # Supongamos que 'python game.py' falló previamente
+    failed_cmds = {"python game.py"}
+    files_modified = False
+
+    # El modelo intenta llamar 'python game.py' de nuevo (incluso si py_compile pasó)
+    tripped, msg = orch._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "python game.py"},
+        failed_commands=failed_cmds,
+        files_modified_since_cmd_fail=files_modified,
+        known_syntax_error_files=set(),
+        last_failed_tool_key=None,
+    )
+    assert tripped is True
+    assert "CIRCUIT BREAKER" in msg
+    assert "concluye el turno e informa al usuario" in msg
+
+
+def test_shell_diagnostics_detects_operation_cancelled():
+    """Verifica que el auto-diagnóstico detecte cuando una herramienta CLI se cancela sin TTY."""
+    ws = Path.cwd()
+    diag = _generate_shell_diagnostics(
+        command="npm create vite@latest . -- --template vanilla",
+        work_dir=ws,
+        exit_code=0,
+        stdout="create-vite v9.3.4\n— Operation cancelled",
+        stderr=""
+    )
+    assert diag is not None
+    assert "OPERACIÓN CANCELADA" in diag
+    assert "create-vite" in diag
+
+
 def test_shell_diagnostics_detects_subproject_package_json():
     """Verifica que el auto-diagnóstico detecte package.json en una subcarpeta cuando npm falla en root."""
     with tempfile.TemporaryDirectory() as tmp_dir:

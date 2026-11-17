@@ -200,29 +200,35 @@ class AgentOrchestrator:
         self,
         tool_name: str,
         args: Dict[str, Any],
-        last_failed_command: Optional[str],
-        files_modified_since_cmd_fail: bool,
-        known_syntax_error_files: set,
+        failed_commands: Optional[set] = None,
+        files_modified_since_cmd_fail: bool = False,
+        known_syntax_error_files: Optional[set] = None,
         last_failed_tool_key: Optional[str] = None,
+        last_failed_command: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle:
         Previene bucles repetitivos donde el modelo:
-        1. Repite el mismo comando de consola que ya falló sin haber modificado ningún archivo.
+        1. Repite comandos de consola que ya fallaron sin haber modificado ningún archivo.
         2. Intenta ejecutar un script que contiene un SyntaxError detectado sin haberlo editado.
         3. Llama repetidamente a la misma herramienta con argumentos idénticos inmediatamente después de haber fallado.
         """
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
-        # Regla 1: run_command idéntico tras un fallo sin modificar archivos
+        # Combinar failed_commands con last_failed_command para retrocompatibilidad
+        active_failed_cmds = set(failed_commands or set())
+        if last_failed_command:
+            active_failed_cmds.add(last_failed_command.strip().lower())
+
+        # Regla 1: run_command que ya falló previamente sin haber modificado archivos
         if tool_name == "run_command":
             cmd_norm = args.get("command", "").strip().lower()
-            if last_failed_command and cmd_norm == last_failed_command and not files_modified_since_cmd_fail:
+            if active_failed_cmds and cmd_norm in active_failed_cmds and not files_modified_since_cmd_fail:
                 msg = (
                     f"⛔ [CIRCUIT BREAKER]: El comando '{args.get('command')}' ya falló previamente y NO has modificado ningún archivo en el disco desde entonces.\n"
-                    "Volver a ejecutar el mismo comando sin cambios producirá exactamente el mismo error.\n"
-                    "Tu razonamiento indicaba que ibas a corregir el archivo, pero llamaste a 'run_command' en lugar de 'edit_file'.\n"
-                    "ACCIÓN OBLIGATORIA: Debes llamar a 'edit_file' o 'write_file' para corregir el código antes de volver a ejecutar el comando."
+                    "• Volver a ejecutar el mismo comando sin cambios en disco producirá exactamente el mismo error.\n"
+                    "• Si la sintaxis del script ya fue validada con py_compile o el juego usa input() interactivo, NO lo vuelvas a ejecutar en la consola de pruebas.\n"
+                    "• ACCIÓN OBLIGATORIA: Si aún no has corregido el código, usa 'edit_file'. Si la verificación de sintaxis ya concluyó con éxito, concluye el turno e informa al usuario en tu respuesta final para que lo ejecute en su propia terminal."
                 )
                 return True, msg
 
@@ -267,7 +273,7 @@ class AgentOrchestrator:
         total_tool_failures = 0
 
         # Variables de control del Circuit Breaker Anti-Bucle
-        last_failed_command: Optional[str] = None
+        failed_commands: set = set()
         files_modified_since_cmd_fail: bool = False
         last_failed_tool_key: Optional[str] = None
         known_syntax_error_files: set = set()
@@ -432,7 +438,7 @@ class AgentOrchestrator:
                 breaker_tripped, breaker_msg = self._check_circuit_breaker(
                     tool_name=tool_name,
                     args=args,
-                    last_failed_command=last_failed_command,
+                    failed_commands=failed_commands,
                     files_modified_since_cmd_fail=files_modified_since_cmd_fail,
                     known_syntax_error_files=known_syntax_error_files,
                     last_failed_tool_key=last_failed_tool_key,
@@ -453,7 +459,8 @@ class AgentOrchestrator:
 
                 # 7. Evaluación del éxito del resultado
                 if tool_name == "run_command":
-                    is_cmd_success = ("Código de salida: 0" in tool_result) and not tool_result.startswith("Error:")
+                    is_cancelled = ("operation cancelled" in tool_result.lower()) or ("operation aborted" in tool_result.lower())
+                    is_cmd_success = ("Código de salida: 0" in tool_result) and not tool_result.startswith("Error:") and not is_cancelled
                     is_success = is_cmd_success
                 else:
                     is_success = not (
@@ -470,8 +477,8 @@ class AgentOrchestrator:
                     has_syntax_err = ("SyntaxError" in tool_result) or ("error de sintaxis" in tool_result.lower())
                     if is_success and not has_syntax_err:
                         files_modified_since_cmd_fail = True
-                        last_failed_command = None
-                        last_failed_tool_key = None  # ¡Se modificó un archivo con éxito! Limpiar fallo previo para permitir re-probar
+                        failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
+                        last_failed_tool_key = None
                         if target_path:
                             known_syntax_error_files.discard(target_path)
                             known_syntax_error_files.discard(Path(target_path).name)
@@ -482,14 +489,14 @@ class AgentOrchestrator:
 
                 elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:
                     files_modified_since_cmd_fail = True
-                    last_failed_command = None
+                    failed_commands.clear()
                     last_failed_tool_key = None
                     known_syntax_error_files.clear()
 
                 elif tool_name == "run_command":
                     cmd_norm = args.get("command", "").strip().lower()
                     if not is_success:
-                        last_failed_command = cmd_norm
+                        failed_commands.add(cmd_norm)
                         files_modified_since_cmd_fail = False
                         last_failed_tool_key = tool_call_key
                         if "syntaxerror" in tool_result.lower():
@@ -498,7 +505,7 @@ class AgentOrchestrator:
                                     known_syntax_error_files.add(part)
                                     known_syntax_error_files.add(Path(part).name)
                     else:
-                        last_failed_command = None
+                        failed_commands.discard(cmd_norm)
                         last_failed_tool_key = None
 
                 if not is_success:

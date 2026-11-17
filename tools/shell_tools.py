@@ -11,11 +11,23 @@ from typing import Optional
 
 def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, stdout: str, stderr: str) -> Optional[str]:
     """Genera sugerencias y diagnósticos contextuales cuando un comando de consola falla."""
-    if exit_code == 0:
+    combined = f"{stdout}\n{stderr}".lower()
+    is_cancelled = "operation cancelled" in combined or "operation aborted" in combined or "operación cancelada" in combined
+
+    if exit_code == 0 and not is_cancelled:
         return None
 
-    combined = f"{stdout}\n{stderr}".lower()
     hints = []
+
+    # 1. Detección de herramientas de scaffolding canceladas por falta de TTY en carpetas con archivos (ej: create-vite)
+    if is_cancelled:
+        hints.append(
+            "⚠️ [OPERACIÓN CANCELADA]: El comando se canceló automáticamente ('Operation cancelled') por la herramienta (create-vite / scaffolding) "
+            "porque solicitó confirmación interactiva y la consola es no interactiva (o el directorio ya contiene archivos existentes).\n"
+            "• NO asumas que el proyecto fue creado.\n"
+            "• Para proyectos web en un repositorio existente, crea una subcarpeta limpia: 'npm create vite@latest frontend -- --template vanilla', "
+            "o crea directamente los archivos 'package.json' e 'index.html' con write_file."
+        )
 
     # 1. Detección de proyecto en subcarpeta (ej: npm install en root cuando package.json está en un subproyecto)
     if ("enoent" in combined or "no such file or directory" in combined) and ("package.json" in combined or "npm" in command.lower()):
@@ -128,6 +140,12 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
             stdout = stdout[:max_output_chars] + f"\n... [Salida truncada: {len(stdout) - max_output_chars} caracteres adicionales]"
         if len(stderr) > max_output_chars:
             stderr = stderr[:max_output_chars] + f"\n... [Error truncado: {len(stderr) - max_output_chars} caracteres adicionales]"
+
+        # Si una herramienta CLI interactiva (como create-vite) se cancela automáticamente por falta de TTY,
+        # forzar código de error para que el agente no crea falsamente que la operación tuvo éxito.
+        combined_lower = f"{stdout}\n{stderr}".lower()
+        if "operation cancelled" in combined_lower or "operation aborted" in combined_lower or "operación cancelada" in combined_lower:
+            exit_code = 1
 
         result = [f"Código de salida: {exit_code}"]
         if stdout:
