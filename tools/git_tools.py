@@ -70,26 +70,28 @@ def create_checkpoint(message: str = "agent-checkpoint") -> str:
 def undo_checkpoint() -> str:
     """
     Revierte el último checkpoint o descarta todos los cambios no guardados.
+    Solo revierte si el último commit fue creado por el agente con [AETHER CHECKPOINT].
     """
     if not is_git_repo():
         return "Error: No es un repositorio Git activo."
 
     # Comprobar si hay commits en el repositorio
-    code_log, _, _ = _run_git(["rev-parse", "HEAD"])
+    code_log, out_log, _ = _run_git(["log", "-1", "--pretty=%B"])
     if code_log != 0:
-        # Aún no hay commits, solo descartar cambios en el working tree
         _run_git(["clean", "-fd"])
         return "Éxito: Se descartaron todos los archivos no rastreados (repositorio inicial)."
 
-    # Revertir cambios de working tree y retroceder 1 commit si era un checkpoint del agente
-    code_reset, out_reset, err_reset = _run_git(["reset", "--hard", "HEAD~1"])
-    if code_reset == 0:
-        return "Éxito: Se ha revertido el último checkpoint. El proyecto volvió al estado anterior."
+    if "[AETHER CHECKPOINT]" in out_log:
+        code_reset, out_reset, err_reset = _run_git(["reset", "--hard", "HEAD~1"])
+        if code_reset == 0:
+            return "Éxito: Se ha revertido el último checkpoint del agente."
+        else:
+            return f"Error al revertir checkpoint: {err_reset}"
     else:
-        # Si no se puede hacer HEAD~1 (ej. solo hay 1 commit), limpiar el working tree al HEAD actual
+        # No tocar commits manuales del desarrollador
         _run_git(["reset", "--hard", "HEAD"])
         _run_git(["clean", "-fd"])
-        return "Éxito: Se descartaron todas las modificaciones no commiteadas volviendo a HEAD."
+        return "Aviso: El último commit no es un checkpoint automático de AETHER. Se limpiaron solo cambios no commiteados."
 
 
 def get_git_diff() -> str:

@@ -4,6 +4,7 @@ Maneja la comunicación con Ollama, ejecución de herramientas y bucle de autoco
 """
 
 import json
+import re
 from typing import Any, Callable, Dict, List, Optional
 import httpx
 
@@ -45,6 +46,108 @@ class AgentOrchestrator:
         except Exception:
             return False
 
+    @staticmethod
+    def _extract_tool_calls_from_content(content: str) -> List[Dict[str, Any]]:
+        """
+        Extrae llamadas a herramientas cuando Ollama/Qwen las devuelve
+        embebidas en 'content' (JSON plano o bloques markdown), o sintetiza
+        write_file si el modelo devolvió bloques de código pasivos.
+        """
+        if not content or not content.strip():
+            return []
+
+        extracted = []
+
+        # 1. Bloques markdown de herramientas ```json ... ```
+        blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
+        for b in blocks:
+            b = b.strip()
+            try:
+                data = json.loads(b)
+                if isinstance(data, dict):
+                    if "name" in data and "arguments" in data:
+                        extracted.append({"function": data})
+                    elif "function" in data:
+                        extracted.append(data)
+                elif isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and "name" in item and "arguments" in item:
+                            extracted.append({"function": item})
+            except Exception:
+                pass
+
+        if extracted:
+            return extracted
+
+        # 2. JSON directo en el contenido
+        try:
+            data = json.loads(content.strip())
+            if isinstance(data, dict):
+                if "name" in data and "arguments" in data:
+                    return [{"function": data}]
+                elif "function" in data:
+                    return [data]
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and "name" in item and "arguments" in item:
+                        extracted.append({"function": item})
+                if extracted:
+                    return extracted
+        except Exception:
+            pass
+
+        # 3. Escaneo con JSONDecoder para llamadas embebidas
+        decoder = json.JSONDecoder()
+        pos = 0
+        raw = content
+        while pos < len(raw):
+            idx = raw.find('{', pos)
+            if idx == -1:
+                break
+            try:
+                obj, end_pos = decoder.raw_decode(raw[idx:])
+                if isinstance(obj, dict):
+                    if "name" in obj and "arguments" in obj:
+                        extracted.append({"function": obj})
+                        pos = idx + end_pos
+                        continue
+                    elif "function" in obj and isinstance(obj["function"], dict):
+                        extracted.append(obj)
+                        pos = idx + end_pos
+                        continue
+                pos = idx + 1
+            except Exception:
+                pos = idx + 1
+
+        if extracted:
+            return extracted
+
+        # 4. Fallback Proactivo: Si el modelo devolvió código en markdown (ej. python)
+        # pero olvidó invocar write_file, sintetizar la llamada para crear el archivo real
+        code_blocks = re.findall(r"```([a-zA-Z0-9_\-+]*)\s*\n([\s\S]*?)\s*```", content)
+        if code_blocks:
+            filename_match = re.search(r"[`'\"]([a-zA-Z0-9_\-]+\.(?:py|js|ts|html|css|json|md|txt|sh|bat))[`'\"]", content)
+            if not filename_match:
+                filename_match = re.search(r"(?:archivo|file|script|llamado)\s+([a-zA-Z0-9_\-]+\.(?:py|js|ts|html|css|json|md|txt|sh|bat))", content, re.IGNORECASE)
+
+            target_filename = filename_match.group(1) if filename_match else "script.py"
+
+            for lang, code_body in code_blocks:
+                lang_clean = lang.lower().strip()
+                if lang_clean in ("python", "py", "javascript", "js", "html", "css", "json", "md", "") and len(code_body.strip()) > 10:
+                    extracted.append({
+                        "function": {
+                            "name": "write_file",
+                            "arguments": {
+                                "path": target_filename,
+                                "content": code_body.strip()
+                            }
+                        }
+                    })
+                    break
+
+        return extracted
+
     def run_turn(self, user_prompt: str) -> str:
         """
         Ejecuta el bucle ReAct completo para una solicitud del usuario.
@@ -82,6 +185,12 @@ class AgentOrchestrator:
             msg = data.get("message", {})
             content = msg.get("content", "")
             tool_calls = msg.get("tool_calls", [])
+
+            # Fallback inteligente: si Ollama no pobló tool_calls nativo pero incluyó llamadas en content
+            if not tool_calls and content:
+                extracted = self._extract_tool_calls_from_content(content)
+                if extracted:
+                    tool_calls = extracted
 
             # Notificar pensamiento/contenido al usuario si existe
             if content and self.on_thought:
