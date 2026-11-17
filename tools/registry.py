@@ -6,7 +6,7 @@ Define esquemas OpenAPI / JSON Schema compatibles con la API de Ollama y el desp
 import json
 from typing import Any, Callable, Dict, List
 
-from tools.file_tools import edit_file, read_file, write_file
+from tools.file_tools import delete_file, edit_file, move_file, read_file, write_file
 from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, undo_checkpoint
 from tools.repomap import generate_repo_map
 from tools.search_tools import list_directory, search_codebase, get_file_outline
@@ -282,6 +282,44 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "required": ["task_description"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_file",
+            "description": "Elimina de forma segura un archivo existente en el disco.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta del archivo a eliminar."
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_file",
+            "description": "Mueve o renombra un archivo existente a una nueva ruta.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {
+                        "type": "string",
+                        "description": "Ruta del archivo original."
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "Nueva ruta o nombre de destino."
+                    }
+                },
+                "required": ["source", "destination"]
+            }
+        }
     }
 ]
 
@@ -290,6 +328,8 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "read_file": read_file,
     "edit_file": edit_file,
     "write_file": write_file,
+    "delete_file": delete_file,
+    "move_file": move_file,
     "run_command": run_command,
     "search_codebase": search_codebase,
     "list_directory": list_directory,

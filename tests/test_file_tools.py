@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from tools.file_tools import read_file, write_file, edit_file
+from tools.file_tools import read_file, write_file, edit_file, delete_file, move_file
 
 
 def test_write_and_read_file(tmp_path):
@@ -42,4 +42,20 @@ def test_edit_file_ambiguous_fails(tmp_path):
     # Intento de editar sin contexto suficiente
     res_edit = edit_file(str(test_file), "x = 10", "x = 20")
     assert "Error: El texto 'target' aparece 2 veces" in res_edit
+
+
+def test_delete_and_move_file(tmp_path):
+    f1 = tmp_path / "orig.txt"
+    f2 = tmp_path / "moved.txt"
+    f1.write_text("sample content", encoding="utf-8")
+
+    res_move = move_file(str(f1), str(f2))
+    assert "Éxito" in res_move
+    assert not f1.exists()
+    assert f2.exists()
+
+    res_del = delete_file(str(f2))
+    assert "Éxito" in res_del
+    assert not f2.exists()
+
 

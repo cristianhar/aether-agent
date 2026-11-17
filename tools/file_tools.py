@@ -3,13 +3,16 @@ Herramientas atómicas para manipulación de archivos y código.
 Diseñadas para maximizar precisión y minimizar consumo de tokens de contexto.
 """
 
+import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
 
 def get_absolute_path(path_str: str, base_dir: Optional[Path] = None) -> Path:
     base = base_dir or Path.cwd()
-    target_path = Path(path_str)
+    expanded = os.path.expandvars(os.path.expanduser(path_str))
+    target_path = Path(expanded)
     if not target_path.is_absolute():
         target_path = (base / target_path).resolve()
     else:
@@ -182,4 +185,33 @@ def edit_file(path: str, target: str, replacement: str) -> str:
         return msg
     except Exception as e:
         return f"Error al guardar cambios en '{path}': {str(e)}"
+
+
+def delete_file(path: str) -> str:
+    """Elimina de forma segura un archivo existente en el sistema."""
+    file_path = get_absolute_path(path)
+    if not file_path.exists():
+        return f"Aviso: El archivo '{path}' no existe."
+    if file_path.is_dir():
+        return f"Error: '{path}' es un directorio. Utiliza comandos de terminal para carpetas."
+    try:
+        file_path.unlink()
+        return f"Éxito: Archivo '{path}' eliminado correctamente del disco."
+    except Exception as e:
+        return f"Error al eliminar '{path}': {str(e)}"
+
+
+def move_file(source: str, destination: str) -> str:
+    """Mueve o renombra un archivo a una nueva ubicación o nombre."""
+    src_path = get_absolute_path(source)
+    dst_path = get_absolute_path(destination)
+    if not src_path.exists():
+        return f"Error: El archivo de origen '{source}' no existe."
+    try:
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src_path), str(dst_path))
+        return f"Éxito: Archivo '{source}' movido/renombrado a '{destination}'."
+    except Exception as e:
+        return f"Error al mover '{source}' a '{destination}': {str(e)}"
+
 

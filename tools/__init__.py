@@ -2,7 +2,7 @@
 Módulo de herramientas del Agente AETHER.
 """
 
-from tools.file_tools import edit_file, read_file, write_file
+from tools.file_tools import delete_file, edit_file, move_file, read_file, write_file
 from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, undo_checkpoint
 from tools.registry import TOOLS_SCHEMA, execute_tool
 from tools.repomap import generate_repo_map
@@ -15,6 +15,8 @@ __all__ = [
     "read_file",
     "edit_file",
     "write_file",
+    "delete_file",
+    "move_file",
     "run_command",
     "search_codebase",
     "list_directory",

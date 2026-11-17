@@ -24,7 +24,7 @@ class HookManager:
         """
         # Restricciones en modo ASK (Solo lectura)
         if self.mode == "ask":
-            forbidden_in_ask = {"write_file", "edit_file", "run_command", "create_checkpoint", "undo_checkpoint"}
+            forbidden_in_ask = {"write_file", "edit_file", "delete_file", "move_file", "run_command", "create_checkpoint", "undo_checkpoint"}
             if tool_name in forbidden_in_ask:
                 return False, f"Herramienta '{tool_name}' bloqueada: El agente está en modo 'ASK' (Solo Lectura)."
 
