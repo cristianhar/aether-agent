@@ -191,9 +191,64 @@ class AgentOrchestrator:
         if extracted:
             return extracted
 
-        # Bloques de código markdown pasivos (ej: ```python ... ```) NO se sintetizan
-        # automáticamente como llamadas a herramientas. Esto previene escrituras fantasma
-        # cuando el modelo simplemente está explicando un concepto en texto al usuario.
+        # 4. Rescate resiliente por expresiones regulares para JSON malformado (comillas o escapes inválidos de modelos 7B)
+        name_match = re.search(r'"name":\s*"([a-zA-Z0-9_]+)"', content)
+        if name_match:
+            tool_name = name_match.group(1)
+            # Rescate para write_file
+            if tool_name == "write_file":
+                p_match = re.search(r'"path":\s*"([^"]+)"', content)
+                c_match = re.search(r'"content":\s*"(.*)"\s*\}\s*\}', content, re.DOTALL)
+                if p_match and c_match:
+                    raw_content = c_match.group(1)
+                    clean_content = (
+                        raw_content.replace("\\n", "\n")
+                        .replace("\\t", "\t")
+                        .replace('\\"', '"')
+                    )
+                    clean_content = re.sub(r'f""\\+"', 'f"""', clean_content)
+                    clean_content = re.sub(r'""\\+"', '"""', clean_content)
+                    clean_content = clean_content.replace('\\\\', '\\')
+                    return [{
+                        "function": {
+                            "name": "write_file",
+                            "arguments": {
+                                "path": p_match.group(1),
+                                "content": clean_content
+                            }
+                        }
+                    }]
+
+            # Rescate para run_command
+            elif tool_name == "run_command":
+                cmd_match = re.search(r'"command":\s*"([^"]+)"', content)
+                if cmd_match:
+                    return [{
+                        "function": {
+                            "name": "run_command",
+                            "arguments": {
+                                "command": cmd_match.group(1)
+                            }
+                        }
+                    }]
+
+            # Rescate para edit_file
+            elif tool_name == "edit_file":
+                p_match = re.search(r'"path":\s*"([^"]+)"', content)
+                t_match = re.search(r'"target":\s*"(.*?)"(?:\s*,\s*"replacement")', content, re.DOTALL)
+                r_match = re.search(r'"replacement":\s*"(.*?)"\s*\}\s*\}', content, re.DOTALL)
+                if p_match and t_match and r_match:
+                    return [{
+                        "function": {
+                            "name": "edit_file",
+                            "arguments": {
+                                "path": p_match.group(1),
+                                "target": t_match.group(1).replace("\\n", "\n").replace('\\"', '"'),
+                                "replacement": r_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+                            }
+                        }
+                    }]
+
         return []
 
     def _check_circuit_breaker(
@@ -357,8 +412,20 @@ class AgentOrchestrator:
                 if clean_thought:
                     self.on_thought(clean_thought)
 
-            # Si el modelo no solicita ninguna herramienta, ha concluido
+            # Si el modelo no solicita ninguna herramienta, verificar si era un intento de JSON malformado
             if not tool_calls:
+                # Detección de tool call fantasma no parseable
+                if '"name":' in content and ('"arguments":' in content or '"path":' in content or '"command":' in content):
+                    if iteration < self.max_iterations:
+                        self.memory.add_assistant_message(content=content)
+                        retry_hint = (
+                            "[SISTEMA AETHER]: Se detectó que intentaste emitir una llamada a herramienta en formato JSON, "
+                            "pero no pudo ser ejecutada por errores de formato o sintaxis. "
+                            "Por favor emite la llamada usando la herramienta directamente sin escapar triples comillas de Python dentro de strings."
+                        )
+                        self.memory.add_user_message(content=retry_hint)
+                        continue
+
                 self.memory.add_assistant_message(content=content)
                 self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content)
                 final_answer = content

@@ -39,3 +39,19 @@ Recuerda llamarla dentro de tu función principal."""
     # Un bloque explicativo pasivo NO debe sintetizar una llamada de herramienta
     calls = AgentOrchestrator._extract_tool_calls_from_content(content)
     assert len(calls) == 0
+
+
+def test_extract_malformed_json_tool_calls_rescued_by_regex():
+    """Verifica que tool calls con comillas triples o escapes inválidos de modelos 7B sean rescatadas."""
+    malformed_content = """ {
+   "name": "write_file",
+   "arguments": {
+     "path": "todo_manager.py",
+     "content": "import sqlite3\\n\\nclass TodoManager:\\n    def listar_pendientes(self):\\n        query = f\\\"\\\"\\\\\\\"SELECT * FROM tasks\\\"\\\"\\\"\\n"
+   }
+ }"""
+    calls = AgentOrchestrator._extract_tool_calls_from_content(malformed_content)
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "write_file"
+    assert calls[0]["function"]["arguments"]["path"] == "todo_manager.py"
+    assert "class TodoManager" in calls[0]["function"]["arguments"]["content"]
