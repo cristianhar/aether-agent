@@ -4,17 +4,27 @@ Permite consultar documentación técnica de librerías, foros y APIs actualizad
 """
 
 import html
+import os
 import re
 import urllib.parse
 import urllib.request
 from typing import List, Dict
 
 
+def is_offline_mode() -> bool:
+    """Verifica si el entorno está configurado para operación estricta 100% offline."""
+    return os.environ.get("AETHER_OFFLINE", "0") in ("1", "true", "True")
+
+
 def search_web(query: str, max_results: int = 5) -> str:
     """
     Superpoder: Realiza una búsqueda web en tiempo real para encontrar documentación de librerías,
     soluciones a errores de compilación o ejemplos técnicos de código.
+    Respeta el perfil 100% offline si AETHER_OFFLINE=1.
     """
+    if is_offline_mode():
+        return "🌐 Modo 100% Offline activo: Búsqueda web externa deshabilitada por configuración de privacidad."
+
     clean_query = query.strip()
     if not clean_query:
         return "Error: La consulta de búsqueda no puede estar vacía."
@@ -91,7 +101,11 @@ def fetch_web_page(url: str, max_chars: int = 4000) -> str:
     """
     Superpoder: Descarga y extrae el texto legible de una página web o documentación técnica.
     Elimina scripts, etiquetas HTML y estilos para ahorrar tokens de contexto.
+    Respeta el perfil 100% offline si AETHER_OFFLINE=1.
     """
+    if is_offline_mode():
+        return "🌐 Modo 100% Offline activo: Lectura de URLs externas deshabilitada por configuración de privacidad."
+
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
 

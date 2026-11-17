@@ -186,31 +186,10 @@ class AgentOrchestrator:
         if extracted:
             return extracted
 
-        # 4. Fallback Proactivo: Si el modelo devolvió código en markdown (ej. python)
-        # pero olvidó invocar write_file, sintetizar la llamada para crear el archivo real
-        code_blocks = re.findall(r"```([a-zA-Z0-9_\-+]*)\s*\n([\s\S]*?)\s*```", content)
-        if code_blocks:
-            filename_match = re.search(r"[`'\"]([a-zA-Z0-9_\-]+\.(?:py|js|ts|html|css|json|md|txt|sh|bat))[`'\"]", content)
-            if not filename_match:
-                filename_match = re.search(r"(?:archivo|file|script|llamado)\s+([a-zA-Z0-9_\-]+\.(?:py|js|ts|html|css|json|md|txt|sh|bat))", content, re.IGNORECASE)
-
-            target_filename = filename_match.group(1) if filename_match else "script.py"
-
-            for lang, code_body in code_blocks:
-                lang_clean = lang.lower().strip()
-                if lang_clean in ("python", "py", "javascript", "js", "html", "css", "json", "md", "") and len(code_body.strip()) > 10:
-                    extracted.append({
-                        "function": {
-                            "name": "write_file",
-                            "arguments": {
-                                "path": target_filename,
-                                "content": code_body.strip()
-                            }
-                        }
-                    })
-                    break
-
-        return extracted
+        # Bloques de código markdown pasivos (ej: ```python ... ```) NO se sintetizan
+        # automáticamente como llamadas a herramientas. Esto previene escrituras fantasma
+        # cuando el modelo simplemente está explicando un concepto en texto al usuario.
+        return []
 
     def run_turn(self, user_prompt: str, cancellation_token: Optional[CancellationToken] = None) -> str:
         """

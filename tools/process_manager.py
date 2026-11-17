@@ -150,7 +150,17 @@ class ProcessManager:
 
             pid = info.pid
 
-        # Matar árbol de procesos
+        # 1. Intento de parada controlada / graceful shutdown
+        try:
+            info.process.terminate()
+            info.process.wait(timeout=1.5)
+            info.is_running = False
+            info.exit_code = info.process.returncode
+            return {"success": True, "message": f"Proceso '{process_id}' (PID {pid}) detenido de forma controlada (graceful termination)."}
+        except (subprocess.TimeoutExpired, Exception):
+            pass
+
+        # 2. Si continúa en ejecución, escalar a terminación forzosa del árbol de procesos
         try:
             if sys.platform == "win32":
                 subprocess.run(
@@ -170,7 +180,7 @@ class ProcessManager:
 
         info.is_running = False
         info.exit_code = -9
-        return {"success": True, "message": f"Proceso '{process_id}' (PID {pid}) cancelado con éxito."}
+        return {"success": True, "message": f"Proceso '{process_id}' (PID {pid}) terminado tras escalar a cierre forzoso."}
 
     def list_processes(self) -> List[Dict[str, Any]]:
         """Lista todos los procesos registrados."""

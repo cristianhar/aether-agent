@@ -25,18 +25,17 @@ def test_extract_raw_json_tool_calls():
     assert calls[0]["function"]["name"] == "run_command"
     assert calls[0]["function"]["arguments"]["command"] == "pytest"
 
-def test_fallback_python_codeblock_synthesis():
-    content = """Aquí tienes el juego en Python:
-Guarda el código en un archivo llamado `adivinanza.py`:
+def test_passive_codeblock_is_not_treated_as_tool_call():
+    content = """Aquí tienes una explicación técnica en Python:
+Puedes definir la función de la siguiente manera:
 
 ```python
 import random
-print(random.randint(1, 10))
+def get_secret():
+    return random.randint(1, 100)
 ```
-¡Disfrútalo!"""
+Recuerda llamarla dentro de tu función principal."""
 
+    # Un bloque explicativo pasivo NO debe sintetizar una llamada de herramienta
     calls = AgentOrchestrator._extract_tool_calls_from_content(content)
-    assert len(calls) == 1
-    assert calls[0]["function"]["name"] == "write_file"
-    assert calls[0]["function"]["arguments"]["path"] == "adivinanza.py"
-    assert "import random" in calls[0]["function"]["arguments"]["content"]
+    assert len(calls) == 0
