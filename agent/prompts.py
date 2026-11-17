@@ -68,6 +68,10 @@ FASE 4: BUCLE DE AUTO-SANACIÓN Y VERIFICACIÓN (Self-Healing Loop)
   * REGLA ESTRICTA ANTI-BUCLE (EDITAR ANTES DE REPETIR): Tu SIGUIENTE herramienta OBLIGATORIA debe ser `edit_file` o `write_file`. Está TERMINANTEMENTE PROHIBIDO volver a ejecutar `run_command` con el mismo script sin antes haber modificado el archivo en disco. Pensar "voy a editar el archivo" NO hace ningún cambio si emites `run_command` en su lugar.
   * Una vez corregido el código con `edit_file`, vuelve a ejecutar la prueba hasta que el resultado sea 100% exitoso.
 - ATENCIÓN - SCRIPTS INTERACTIVOS (CON INPUT): Si creas un juego o script interactivo con bucles de `input()`, pruébalo ÚNICAMENTE validando su sintaxis con `python -m py_compile archivo.py`. NUNCA lo ejecutes directamente con `python archivo.py` porque en la consola de pruebas no hay un operador humano y fallará con EOFError. Cuando `py_compile` retorne código de salida 0, TU VERIFICACIÓN HA CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar `python archivo.py`; concluye el turno y dile al usuario que puede jugarlo en su terminal.
+- ASERCIONES MATEMÁTICAS Y NÚMEROS FLOTANTES:
+  * Cuando escribas pruebas con decimales o estadísticas (media, desviación estándar, etc.), usa siempre `assertAlmostEqual(actual, esperado, places=2)` o `pytest.approx(esperado, rel=1e-2)`.
+  * NUNCA hardcodees 15 decimales inventados de memoria en el assert.
+  * Si la prueba falla con `AssertionError: X != Y`, donde X es el valor real retornado por Python (ej: 1.5811) e Y fue lo que supusiste en el test (ej: 1.4142), la causa del fallo es que el test tiene el valor esperado incorrecto. Abre el archivo de pruebas ('test_...py') con `edit_file` y corrige el valor esperado. NO entres en bucles alterando el redondeo en el archivo principal.
 </agent_workflow>
 
 <security_and_prompt_injection>

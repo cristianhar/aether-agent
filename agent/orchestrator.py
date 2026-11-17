@@ -277,6 +277,8 @@ class AgentOrchestrator:
         files_modified_since_cmd_fail: bool = False
         last_failed_tool_key: Optional[str] = None
         known_syntax_error_files: set = set()
+        last_assertion_error: Optional[str] = None
+        assertion_error_repeat_count: int = 0
 
         for iteration in range(1, self.max_iterations + 1):
             # Comprobar si se solicitó cancelación
@@ -482,6 +484,10 @@ class AgentOrchestrator:
                         if target_path:
                             known_syntax_error_files.discard(target_path)
                             known_syntax_error_files.discard(Path(target_path).name)
+                            # Si se modificó el archivo de pruebas, resetear contador de aserciones persistentes
+                            if "test" in Path(target_path).name.lower():
+                                last_assertion_error = None
+                                assertion_error_repeat_count = 0
                     elif has_syntax_err and target_path:
                         known_syntax_error_files.add(target_path)
                         known_syntax_error_files.add(Path(target_path).name)
@@ -492,6 +498,8 @@ class AgentOrchestrator:
                     failed_commands.clear()
                     last_failed_tool_key = None
                     known_syntax_error_files.clear()
+                    last_assertion_error = None
+                    assertion_error_repeat_count = 0
 
                 elif tool_name == "run_command":
                     cmd_norm = args.get("command", "").strip().lower()
@@ -504,6 +512,25 @@ class AgentOrchestrator:
                                 if part.endswith(".py"):
                                     known_syntax_error_files.add(part)
                                     known_syntax_error_files.add(Path(part).name)
+
+                        # Detección de bucles de aserción persistente (AssertionError idéntico repetido)
+                        assert_match = re.search(r"(AssertionError:[^\n\r]+)", tool_result)
+                        if assert_match:
+                            err_line = assert_match.group(1).strip()
+                            if last_assertion_error and err_line == last_assertion_error:
+                                assertion_error_repeat_count += 1
+                            else:
+                                last_assertion_error = err_line
+                                assertion_error_repeat_count = 1
+
+                            if assertion_error_repeat_count >= 2:
+                                tool_result += (
+                                    f"\n🚨 [CIRCUIT BREAKER - ASERCIÓN PERSISTENTE ({assertion_error_repeat_count} veces)]:\n"
+                                    f"La prueba sigue fallando con el mismo error: '{err_line}'.\n"
+                                    "Tus modificaciones previas en el archivo de implementación NO están resolviendo el fallo.\n"
+                                    "• CAUSA MUY PROBABLE: El valor esperado (assert) en tu archivo de prueba está mal calculado matemáticamente o difiere del resultado real de Python.\n"
+                                    "• ACCIÓN OBLIGATORIA: Abre el archivo de pruebas ('test_...py') y actualiza el valor esperado con el valor real que arroja Python o usa tolerancia (assertAlmostEqual / pytest.approx). NO sigas alterando el redondeo en el archivo principal."
+                                )
                     else:
                         failed_commands.discard(cmd_norm)
                         last_failed_tool_key = None

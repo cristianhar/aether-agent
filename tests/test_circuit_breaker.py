@@ -184,3 +184,12 @@ def test_auto_linter_directive_in_write_file():
         assert "ACCIÓN OBLIGATORIA" in res
         assert "edit_file" in res
         assert "NUNCA llames a 'run_command'" in res
+
+
+def test_persistent_assertion_error_regex():
+    """Verifica que la detección regex de AssertionError capture la línea exacta de discrepancia."""
+    import re
+    result_mock = "FAIL: test_foo\nAssertionError: 1.581138830084 != 1.4142135623730951 within 7 places"
+    match = re.search(r"(AssertionError:[^\n\r]+)", result_mock)
+    assert match is not None
+    assert "1.581138830084 != 1.4142135623730951" in match.group(1)
