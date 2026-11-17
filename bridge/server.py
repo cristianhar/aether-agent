@@ -113,7 +113,8 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                 "state": orch.state.value,
                 "model": orch.model,
                 "session_id": orch.session_id,
-                "cwd": str(Path.cwd()),
+                "mode": getattr(orch.hooks, "mode", "agent"),
+                "cwd": str(_REPO_ROOT),
                 "vram_info": vram,
             })
 
@@ -167,9 +168,84 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
 
         if path == "/api/chat":
             prompt = body.get("prompt", "").strip()
+            active_file = body.get("active_file", "main.py")
             if not prompt:
                 self._send_json({"error": "El campo 'prompt' es obligatorio."}, 400)
                 return
+
+            # Manejo directo de Slash Commands instantáneos
+            if prompt.startswith("/"):
+                cmd_parts = prompt.split(maxsplit=1)
+                cmd = cmd_parts[0].lower()
+                arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
+                if cmd == "/test":
+                    import subprocess
+                    res = subprocess.run([sys.executable, "-m", "pytest", "-v"], cwd=str(_REPO_ROOT), capture_output=True, text=True, timeout=60)
+                    out = res.stdout.strip()
+                    tail = out[-1200:] if len(out) > 1200 else out
+                    status_text = "✅ Todas las pruebas pasaron exitosamente." if res.returncode == 0 else "❌ Se detectaron fallos en las pruebas."
+                    answer = f"🧪 **Resultados de las pruebas automatizadas (pytest):**\n```text\n{tail}\n```\n{status_text}"
+                    self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
+
+                elif cmd == "/diff":
+                    diff = get_git_diff()
+                    st = get_git_status()
+                    answer = f"📋 **Estado de Git y Cambios:**\n```text\n{st}\n```\n```diff\n{diff or '# No hay cambios pendientes de commit.'}\n```"
+                    self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "is_command": True, "action": "open_diff"})
+                    return
+
+                elif cmd == "/vram":
+                    vram = get_hardware_vram_status()
+                    self._send_json({"success": True, "answer": vram, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
+
+                elif cmd == "/mode":
+                    target_mode = arg.lower() or "agent"
+                    if target_mode in ["ask", "agent", "plan"]:
+                        orch.hooks.set_mode(target_mode)
+                        desc = {
+                            "agent": "Modo Autónomo Total (lectura, escritura y ejecución libre de herramientas).",
+                            "ask": "Modo Seguro (requiere confirmación para modificar archivos y ejecutar comandos).",
+                            "plan": "Modo Planificador (solo análisis arquitectónico y razonamiento, sin modificar archivos)."
+                        }.get(target_mode, "")
+                        answer = f"🛡️ **Modo cambiado a `{target_mode.upper()}`:**\n{desc}"
+                        self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "mode": target_mode, "is_command": True})
+                        return
+                    else:
+                        answer = "⚠️ Modo no reconocido. Opciones válidas: `/mode agent`, `/mode ask`, `/mode plan`."
+                        self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                        return
+
+                elif cmd == "/checkpoint":
+                    from agent.checkpoints import SafeCheckpointManager
+                    desc = arg or "Snapshot manual desde Desktop"
+                    cm = SafeCheckpointManager(workspace_root=str(_REPO_ROOT))
+                    chk_id = cm.create_checkpoint(description=desc)
+                    answer = f"💾 **Punto de restauración seguro creado con éxito:**\n- **ID:** `{chk_id}`\n- **Descripción:** {desc}"
+                    self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
+
+                elif cmd == "/undo":
+                    from agent.checkpoints import SafeCheckpointManager
+                    cm = SafeCheckpointManager(workspace_root=str(_REPO_ROOT))
+                    checkpoints = cm.list_checkpoints()
+                    if not checkpoints:
+                        answer = "⚠️ No hay checkpoints disponibles para restaurar."
+                    else:
+                        last_id = checkpoints[-1]["snapshot_id"]
+                        res = cm.restore_checkpoint(last_id, force=True)
+                        answer = f"⏪ **Restauración completada al checkpoint `{last_id}`:**\n{res}"
+                    self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "is_command": True, "action": "reload_file"})
+                    return
+
+                elif cmd == "/review":
+                    from agent.skills import SkillRegistry
+                    target = arg or active_file or "main.py"
+                    review_res = SkillRegistry().run_code_review(target)
+                    self._send_json({"success": True, "answer": review_res, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
 
             with _LOCK:
                 _ACTIVE_TOKEN = CancellationToken()

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
   FileCode,
@@ -15,6 +15,11 @@ import {
   Search,
   Code2,
   Terminal,
+  ShieldCheck,
+  ShieldAlert,
+  Shield,
+  Trash2,
+  Columns,
 } from "lucide-react";
 import "./App.css";
 
@@ -23,11 +28,33 @@ const BRIDGE_URL = "http://127.0.0.1:8765";
 interface Message {
   role: "user" | "assistant" | "system";
   content: string;
+  isCommand?: boolean;
 }
+
+interface SlashCommand {
+  cmd: string;
+  label: string;
+  desc: string;
+  icon: React.ReactNode;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { cmd: "/mode agent", label: "/mode agent", desc: "Modo Autónomo Total (lectura, escritura y comandos)", icon: <ShieldCheck size={14} color="#10b981" /> },
+  { cmd: "/mode ask", label: "/mode ask", desc: "Modo Seguro (requiere confirmación para cambios)", icon: <ShieldAlert size={14} color="#f59e0b" /> },
+  { cmd: "/mode plan", label: "/mode plan", desc: "Modo Planificador (solo análisis, sin modificar archivos)", icon: <Shield size={14} color="#3b82f6" /> },
+  { cmd: "/test", label: "/test", desc: "Ejecutar suite completa de tests automatizados (pytest)", icon: <Play size={14} color="#00d2ff" /> },
+  { cmd: "/diff", label: "/diff", desc: "Ver cambios pendientes de Git y abrir pestaña diff", icon: <GitBranch size={14} color="#a855f7" /> },
+  { cmd: "/review", label: "/review", desc: "Auditoría de código AST sobre el archivo activo", icon: <FileCode size={14} color="#10b981" /> },
+  { cmd: "/checkpoint", label: "/checkpoint [desc]", desc: "Crear snapshot de seguridad del espacio de trabajo", icon: <Save size={14} color="#3b82f6" /> },
+  { cmd: "/undo", label: "/undo", desc: "Revertir al último checkpoint del agente sin tocar Git", icon: <RotateCcw size={14} color="#ef4444" /> },
+  { cmd: "/vram", label: "/vram", desc: "Consultar uso de memoria VRAM GPU RTX 4060 en Ollama", icon: <Cpu size={14} color="#76b900" /> },
+  { cmd: "/clear", label: "/clear", desc: "Limpiar la conversación en pantalla", icon: <Trash2 size={14} color="#8b949e" /> },
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"editor" | "diff">("editor");
   const [sidebarTab, setSidebarTab] = useState<"files" | "repomap">("files");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<string>("main.py");
   const [fileContent, setFileContent] = useState<string>("# Cargando código...");
   const [originalContent, setOriginalContent] = useState<string>("");
@@ -35,16 +62,30 @@ export default function App() {
   const [fileFilter, setFileFilter] = useState<string>("");
   const [repoMap, setRepoMap] = useState<string>("");
   const [vramInfo, setVramInfo] = useState<string>("Conectando con GPU...");
+  const [agentMode, setAgentMode] = useState<string>("agent");
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content:
-        "👋 ¡Hola! Soy **AETHER IDE** (Tauri v2 Desktop). Estoy conectado al Agent Runtime local y listo para programar de forma autónoma con tu RTX 4060.",
+        "👋 ¡Hola! Soy **AETHER IDE** (Tauri v2 Desktop). Estoy conectado al Agent Runtime local con tu RTX 4060.\n\n💡 *Tip: Escribe `/` para ver los comandos rápidos (`/test`, `/diff`, `/mode`, `/review`, `/checkpoint`, etc.) o `@` para mencionar un archivo.*",
     },
   ]);
   const [inputPrompt, setInputPrompt] = useState<string>("");
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [gitDiff, setGitDiff] = useState<string>("");
+
+  // Slash commands popup state
+  const [showSlashMenu, setShowSlashMenu] = useState<boolean>(false);
+  const [slashIndex, setSlashIndex] = useState<number>(0);
+  const [slashFilter, setSlashFilter] = useState<string>("");
+
+  // File mention (@) popup state
+  const [showMentionMenu, setShowMentionMenu] = useState<boolean>(false);
+  const [mentionIndex, setMentionIndex] = useState<number>(0);
+  const [mentionFilter, setMentionFilter] = useState<string>("");
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchStatus();
@@ -53,12 +94,39 @@ export default function App() {
     loadFile("main.py");
   }, []);
 
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isRunning]);
+
+  // Global Keyboard Shortcuts (Ctrl+S, Escape, Ctrl+B)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveFile();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebarCollapsed((prev) => !prev);
+      } else if (e.key === "Escape") {
+        if (showSlashMenu || showMentionMenu) {
+          setShowSlashMenu(false);
+          setShowMentionMenu(false);
+        } else if (isRunning) {
+          handleCancel();
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showSlashMenu, showMentionMenu, isRunning, fileContent, selectedFile]);
+
   async function fetchStatus() {
     try {
       const res = await fetch(`${BRIDGE_URL}/api/status`);
       if (res.ok) {
         const data = await res.json();
         setVramInfo(data.vram_info || "RTX 4060 · Online");
+        if (data.mode) setAgentMode(data.mode);
       }
     } catch {
       setVramInfo("Bridge desconectado (Inicia bridge/server.py)");
@@ -136,31 +204,155 @@ export default function App() {
     }
   }
 
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setInputPrompt(val);
+
+    // Detectar si inicia con / para slash commands
+    if (val.startsWith("/")) {
+      const query = val.slice(1).toLowerCase();
+      setSlashFilter(query);
+      setShowSlashMenu(true);
+      setShowMentionMenu(false);
+      setSlashIndex(0);
+    } else {
+      setShowSlashMenu(false);
+    }
+
+    // Detectar si contiene @ para menciones de archivo
+    const lastWord = val.split(" ").pop() || "";
+    if (lastWord.startsWith("@")) {
+      const query = lastWord.slice(1).toLowerCase();
+      setMentionFilter(query);
+      setShowMentionMenu(true);
+      setShowSlashMenu(false);
+      setMentionIndex(0);
+    } else if (!val.startsWith("/")) {
+      setShowMentionMenu(false);
+    }
+  }
+
+  const filteredSlash = SLASH_COMMANDS.filter(
+    (c) =>
+      c.cmd.toLowerCase().includes(slashFilter) ||
+      c.desc.toLowerCase().includes(slashFilter)
+  );
+
+  const filteredMentions = fileList.filter((f) =>
+    f.toLowerCase().includes(mentionFilter)
+  ).slice(0, 8);
+
+  function applySlashCommand(cmd: string) {
+    if (cmd === "/clear") {
+      setMessages([]);
+      setInputPrompt("");
+      setShowSlashMenu(false);
+      return;
+    }
+    setInputPrompt(cmd);
+    setShowSlashMenu(false);
+    inputRef.current?.focus();
+  }
+
+  function applyMention(filename: string) {
+    const words = inputPrompt.split(" ");
+    words.pop();
+    words.push(`@${filename} `);
+    setInputPrompt(words.join(" "));
+    setShowMentionMenu(false);
+    inputRef.current?.focus();
+  }
+
+  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (showSlashMenu && filteredSlash.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((prev) => (prev + 1) % filteredSlash.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((prev) => (prev - 1 + filteredSlash.length) % filteredSlash.length);
+        return;
+      }
+      if (e.key === "Tab" || e.key === "Enter") {
+        if (!e.shiftKey) {
+          e.preventDefault();
+          applySlashCommand(filteredSlash[slashIndex].cmd);
+          return;
+        }
+      }
+    }
+
+    if (showMentionMenu && filteredMentions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev + 1) % filteredMentions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev - 1 + filteredMentions.length) % filteredMentions.length);
+        return;
+      }
+      if (e.key === "Tab" || e.key === "Enter") {
+        if (!e.shiftKey) {
+          e.preventDefault();
+          applyMention(filteredMentions[mentionIndex]);
+          return;
+        }
+      }
+    }
+
+    if (e.key === "Enter" && !e.shiftKey && !showSlashMenu && !showMentionMenu) {
+      e.preventDefault();
+      handleSendPrompt();
+    }
+  }
+
   async function handleSendPrompt(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!inputPrompt.trim() || isRunning) return;
 
     const userMsg = inputPrompt.trim();
     setInputPrompt("");
-    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+    setShowSlashMenu(false);
+    setShowMentionMenu(false);
+
+    // Si es comando /clear
+    if (userMsg === "/clear") {
+      setMessages([]);
+      return;
+    }
+
+    const isCmd = userMsg.startsWith("/");
+    setMessages((prev) => [...prev, { role: "user", content: userMsg, isCommand: isCmd }]);
     setIsRunning(true);
 
     try {
       const res = await fetch(`${BRIDGE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userMsg }),
+        body: JSON.stringify({ prompt: userMsg, active_file: selectedFile }),
       });
 
       if (res.ok) {
         const data = await res.json();
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: data.answer || "Tarea completada." },
+          { role: "assistant", content: data.answer || "Tarea completada.", isCommand: data.is_command },
         ]);
+
+        if (data.mode) setAgentMode(data.mode);
+        if (data.action === "open_diff") {
+          fetchDiff();
+          setActiveTab("diff");
+        } else if (data.action === "reload_file") {
+          loadFile(selectedFile);
+        }
+
         fetchDiff();
         fetchTree();
-        loadFile(selectedFile);
       } else {
         const err = await res.json();
         setMessages((prev) => [
@@ -173,7 +365,7 @@ export default function App() {
         ...prev,
         {
           role: "assistant",
-          content: `❌ No se pudo contactar con el puente local: ${err}. Asegúrate de ejecutar 'python bridge/server.py'.`,
+          content: `❌ No se pudo contactar con el puente local: ${err}. Asegúrate de que 'bridge/server.py' esté corriendo.`,
         },
       ]);
     } finally {
@@ -186,6 +378,22 @@ export default function App() {
       await fetch(`${BRIDGE_URL}/api/cancel`, { method: "POST" });
     } catch {}
     setIsRunning(false);
+  }
+
+  async function cycleMode() {
+    const nextMode = agentMode === "agent" ? "ask" : agentMode === "ask" ? "plan" : "agent";
+    try {
+      const res = await fetch(`${BRIDGE_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: `/mode ${nextMode}` }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAgentMode(nextMode);
+        setMessages((prev) => [...prev, { role: "assistant", content: data.answer, isCommand: true }]);
+      }
+    } catch {}
   }
 
   function getLanguage(filename: string): string {
@@ -231,11 +439,30 @@ export default function App() {
       {/* Top Navigation Bar */}
       <header className="aether-header">
         <div className="brand">
+          <button
+            className="btn-icon"
+            onClick={() => setSidebarCollapsed((p) => !p)}
+            title="Colapsar / Expandir Barra Lateral (Ctrl+B)"
+          >
+            <Columns size={16} />
+          </button>
           <Sparkles className="icon-sparkle" size={20} />
           <span className="brand-title">AETHER IDE</span>
           <span className="badge-tauri">Tauri v2 · Desktop</span>
         </div>
         <div className="status-badges">
+          {/* Mode Switcher Pill */}
+          <button
+            className={`badge-mode ${agentMode}`}
+            onClick={cycleMode}
+            title="Clic para cambiar modo (Agent / Ask / Plan)"
+          >
+            {agentMode === "agent" && <ShieldCheck size={13} />}
+            {agentMode === "ask" && <ShieldAlert size={13} />}
+            {agentMode === "plan" && <Shield size={13} />}
+            <span>MODO: {agentMode.toUpperCase()}</span>
+          </button>
+
           <div className="badge" title="VRAM Hardware Guard">
             <Cpu size={14} />
             <span>{vramInfo}</span>
@@ -247,7 +474,7 @@ export default function App() {
           <button
             className={`btn-save ${isDirty ? "dirty" : ""}`}
             onClick={saveFile}
-            title={isDirty ? "Guardar cambios pendientes (Ctrl+S)" : "Sin cambios"}
+            title={isDirty ? "Guardar cambios pendientes (Ctrl+S)" : "Sin cambios pendientes"}
           >
             <Save size={14} /> {isDirty ? "Guardar *" : "Guardado"}
           </button>
@@ -257,57 +484,59 @@ export default function App() {
       {/* Main Workspace Layout */}
       <div className="aether-workspace">
         {/* Left Sidebar: File Explorer / AST Repo-Map */}
-        <aside className="aether-sidebar">
-          <div className="sidebar-tab-header">
-            <button
-              className={`sidebar-tab-btn ${sidebarTab === "files" ? "active" : ""}`}
-              onClick={() => setSidebarTab("files")}
-            >
-              <FolderTree size={14} /> Archivos ({fileList.length})
-            </button>
-            <button
-              className={`sidebar-tab-btn ${sidebarTab === "repomap" ? "active" : ""}`}
-              onClick={() => setSidebarTab("repomap")}
-            >
-              <Sparkles size={14} /> Mapa IA
-            </button>
-            <button className="btn-icon" onClick={fetchTree} title="Actualizar árbol y mapa">
-              <RefreshCw size={12} />
-            </button>
-          </div>
-
-          {sidebarTab === "files" ? (
-            <div className="file-explorer-container">
-              <div className="file-search-bar">
-                <Search size={13} className="search-icon" />
-                <input
-                  type="text"
-                  placeholder="Buscar archivo..."
-                  value={fileFilter}
-                  onChange={(e) => setFileFilter(e.target.value)}
-                />
-              </div>
-              <div className="file-list">
-                {filteredFiles.map((f) => (
-                  <div
-                    key={f}
-                    className={`file-item ${selectedFile === f ? "selected" : ""}`}
-                    onClick={() => loadFile(f)}
-                    title={f}
-                  >
-                    {getFileIcon(f)}
-                    <span className="file-name">{f}</span>
-                  </div>
-                ))}
-                {filteredFiles.length === 0 && (
-                  <div className="file-empty">No se encontraron archivos coincidentes.</div>
-                )}
-              </div>
+        {!sidebarCollapsed && (
+          <aside className="aether-sidebar">
+            <div className="sidebar-tab-header">
+              <button
+                className={`sidebar-tab-btn ${sidebarTab === "files" ? "active" : ""}`}
+                onClick={() => setSidebarTab("files")}
+              >
+                <FolderTree size={14} /> Archivos ({fileList.length})
+              </button>
+              <button
+                className={`sidebar-tab-btn ${sidebarTab === "repomap" ? "active" : ""}`}
+                onClick={() => setSidebarTab("repomap")}
+              >
+                <Sparkles size={14} /> Mapa IA
+              </button>
+              <button className="btn-icon" onClick={fetchTree} title="Actualizar árbol y mapa">
+                <RefreshCw size={12} />
+              </button>
             </div>
-          ) : (
-            <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico AST..."}</pre>
-          )}
-        </aside>
+
+            {sidebarTab === "files" ? (
+              <div className="file-explorer-container">
+                <div className="file-search-bar">
+                  <Search size={13} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Buscar archivo..."
+                    value={fileFilter}
+                    onChange={(e) => setFileFilter(e.target.value)}
+                  />
+                </div>
+                <div className="file-list">
+                  {filteredFiles.map((f) => (
+                    <div
+                      key={f}
+                      className={`file-item ${selectedFile === f ? "selected" : ""}`}
+                      onClick={() => loadFile(f)}
+                      title={f}
+                    >
+                      {getFileIcon(f)}
+                      <span className="file-name">{f}</span>
+                    </div>
+                  ))}
+                  {filteredFiles.length === 0 && (
+                    <div className="file-empty">No se encontraron archivos coincidentes.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico AST..."}</pre>
+            )}
+          </aside>
+        )}
 
         {/* Center: Monaco Code Editor / Diff Editor */}
         <main className="aether-editor-stage">
@@ -374,11 +603,13 @@ export default function App() {
         {/* Right Sidebar: AETHER Autonomous Agent Panel */}
         <section className="aether-agent-panel">
           <div className="panel-header">
-            <Sparkles size={16} />
-            <span>Agente Autónomo</span>
+            <div className="panel-title">
+              <Sparkles size={16} />
+              <span>Agente Autónomo</span>
+            </div>
             {isRunning ? (
-              <button className="btn-cancel" onClick={handleCancel}>
-                <Square size={12} /> Cancelar
+              <button className="btn-cancel" onClick={handleCancel} title="Cancelar (Escape)">
+                <Square size={12} /> Cancelar (Esc)
               </button>
             ) : (
               <span className="agent-status-idle">IDLE</span>
@@ -387,7 +618,7 @@ export default function App() {
 
           <div className="chat-messages">
             {messages.map((m, idx) => (
-              <div key={idx} className={`chat-bubble ${m.role}`}>
+              <div key={idx} className={`chat-bubble ${m.role} ${m.isCommand ? "command-bubble" : ""}`}>
                 <div className="role-label">{m.role.toUpperCase()}</div>
                 <div className="bubble-content">{m.content}</div>
               </div>
@@ -398,17 +629,63 @@ export default function App() {
                 <span>AETHER pensando y ejecutando herramientas...</span>
               </div>
             )}
+            <div ref={chatBottomRef} />
           </div>
+
+          {/* Floating Slash Commands Popup */}
+          {showSlashMenu && filteredSlash.length > 0 && (
+            <div className="slash-command-popup">
+              <div className="popup-header">Comandos Disponibles (↑ ↓ para navegar, Tab/Enter para seleccionar)</div>
+              <div className="popup-list">
+                {filteredSlash.map((c, i) => (
+                  <div
+                    key={c.cmd}
+                    className={`popup-item ${i === slashIndex ? "active" : ""}`}
+                    onClick={() => applySlashCommand(c.cmd)}
+                  >
+                    <div className="item-icon">{c.icon}</div>
+                    <div className="item-info">
+                      <div className="item-title">{c.label}</div>
+                      <div className="item-desc">{c.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Floating File Mention Popup */}
+          {showMentionMenu && filteredMentions.length > 0 && (
+            <div className="slash-command-popup mention-popup">
+              <div className="popup-header">Mencionar Archivo del Proyecto (@)</div>
+              <div className="popup-list">
+                {filteredMentions.map((f, i) => (
+                  <div
+                    key={f}
+                    className={`popup-item ${i === mentionIndex ? "active" : ""}`}
+                    onClick={() => applyMention(f)}
+                  >
+                    <div className="item-icon">{getFileIcon(f)}</div>
+                    <div className="item-info">
+                      <div className="item-title">{f}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <form className="chat-input-bar" onSubmit={handleSendPrompt}>
             <input
+              ref={inputRef}
               type="text"
-              placeholder="Pídele a AETHER que implemente, corrija o pruebe algo..."
+              placeholder="Pregunta o ejecuta comandos con / (/test, /diff, /mode, /review)..."
               value={inputPrompt}
               disabled={isRunning}
-              onChange={(e) => setInputPrompt(e.target.value)}
+              onChange={handleInputChange}
+              onKeyDown={handleInputKeyDown}
             />
-            <button type="submit" disabled={isRunning || !inputPrompt.trim()}>
+            <button type="submit" disabled={isRunning || !inputPrompt.trim()} title="Enviar (Enter)">
               <Play size={16} />
             </button>
           </form>

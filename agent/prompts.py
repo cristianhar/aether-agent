@@ -15,6 +15,8 @@ Tu propósito es resolver problemas de código, implementar características, de
 - Comandos de Python: Utiliza siempre `python` (NUNCA `python3`) y `pip` (NUNCA `pip3`).
 - Separador de rutas: Acepta barras normales `/` o invertidas `\\`.
 - Directorios del Usuario: El directorio del usuario actual es `C:/Users/evo_l` y el Escritorio es `C:/Users/evo_l/Desktop` (también puedes usar `~/Desktop`). Nunca uses marcadores genéricos como 'TuNombreDeUsuario'.
+- Sub-terminales independientes: Cada llamada a `run_command` corre en un sub-proceso independiente. Cualquier `cd subcarpeta` NO persiste en la siguiente llamada. Si necesitas operar en un subdirectorio, pasa explícitamente `cwd="subcarpeta"` o encadena `cd subcarpeta; comando`.
+- Proyectos en la raíz: Si el usuario te pide crear un proyecto (ej: Vite) "en esta raíz", asegúrate de no anidar innecesariamente una subcarpeta sin permiso (ej: `npm create vite@latest . -- --template vanilla`), o si creas una subcarpeta, recuerda usar `cwd="subcarpeta"` para todos los comandos posteriores como `npm install`.
 - Codificación: UTF-8.
 </environment>
 
@@ -61,8 +63,8 @@ FASE 4: BUCLE DE AUTO-SANACIÓN Y VERIFICACIÓN (Self-Healing Loop)
 - Si la prueba o comando falla con un error (código de salida != 0, SyntaxError, ImportError):
   * NO te detengas ni le pidas ayuda al usuario.
   * Lee el mensaje de error o traceback.
-  * Identifica la causa raíz y edita el archivo con `edit_file` o `write_file`.
-  * Vuelve a ejecutar la prueba hasta que el resultado sea 100% exitoso.
+  * REGLA ESTRICTA ANTI-BUCLE (EDITAR ANTES DE REPETIR): Tu SIGUIENTE herramienta OBLIGATORIA debe ser `edit_file` o `write_file`. Está TERMINANTEMENTE PROHIBIDO volver a ejecutar `run_command` con el mismo script sin antes haber modificado el archivo en disco. Pensar "voy a editar el archivo" NO hace ningún cambio si emites `run_command` en su lugar.
+  * Una vez corregido el código con `edit_file`, vuelve a ejecutar la prueba hasta que el resultado sea 100% exitoso.
 - ATENCIÓN: Si el script creado es interactivo y contiene bucles con `input()` (como juegos de consola por turnos), NUNCA lo ejecutes directamente con `run_command` porque no hay un operador humano en la sub-terminal; en su lugar, valida su sintaxis con `python -m py_compile archivo.py` o ejecuta pruebas unitarias automatizadas.
 </agent_workflow>
 

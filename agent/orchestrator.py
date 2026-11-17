@@ -196,6 +196,59 @@ class AgentOrchestrator:
         # cuando el modelo simplemente está explicando un concepto en texto al usuario.
         return []
 
+    def _check_circuit_breaker(
+        self,
+        tool_name: str,
+        args: Dict[str, Any],
+        last_failed_command: Optional[str],
+        files_modified_since_cmd_fail: bool,
+        known_syntax_error_files: set,
+        consecutive_tool_counts: Dict[str, int],
+    ) -> Tuple[bool, str]:
+        """
+        Circuit Breaker Anti-Bucle:
+        Previene bucles repetitivos donde el modelo:
+        1. Repite el mismo comando de consola que ya falló sin haber modificado ningún archivo.
+        2. Intenta ejecutar un script que contiene un SyntaxError detectado sin haberlo editado.
+        3. Llama repetidamente a la misma herramienta con argumentos idénticos tras un fallo previo.
+        """
+        tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
+
+        # Regla 1: run_command idéntico tras un fallo sin modificar archivos
+        if tool_name == "run_command":
+            cmd_norm = args.get("command", "").strip().lower()
+            if last_failed_command and cmd_norm == last_failed_command and not files_modified_since_cmd_fail:
+                msg = (
+                    f"⛔ [CIRCUIT BREAKER]: El comando '{args.get('command')}' ya falló previamente y NO has modificado ningún archivo en el disco desde entonces.\n"
+                    "Volver a ejecutar el mismo comando sin cambios producirá exactamente el mismo error.\n"
+                    "Tu razonamiento indicaba que ibas a corregir el archivo, pero llamaste a 'run_command' en lugar de 'edit_file'.\n"
+                    "ACCIÓN OBLIGATORIA: Debes llamar a 'edit_file' o 'write_file' para corregir el código antes de volver a ejecutar el comando."
+                )
+                return True, msg
+
+            # Regla 2: Ejecución de script con SyntaxError pendiente
+            if known_syntax_error_files:
+                for err_file in list(known_syntax_error_files):
+                    err_base = Path(err_file).name.lower()
+                    if err_base in cmd_norm:
+                        msg = (
+                            f"⛔ [CIRCUIT BREAKER]: El archivo '{err_file}' tiene un SyntaxError pendiente de corrección en el disco.\n"
+                            f"No puedes ejecutar '{args.get('command')}' hasta haber corregido la sintaxis de '{err_file}'.\n"
+                            f"ACCIÓN OBLIGATORIA: Llama a 'edit_file' con path='{err_file}' para corregir la sintaxis antes de volver a ejecutar."
+                        )
+                        return True, msg
+
+        # Regla 3: Herramienta idéntica consecutiva tras un fallo previo
+        if consecutive_tool_counts.get(tool_call_key, 0) >= 1:
+            msg = (
+                f"⛔ [CIRCUIT BREAKER]: La herramienta '{tool_name}' con estos mismos argumentos ya fue ejecutada y falló.\n"
+                "Está PROHIBIDO repetir la misma acción fallida consecutivamente sin cambiar los parámetros.\n"
+                "Cambia tus argumentos o utiliza una herramienta diferente (ej: edit_file, read_file o search_codebase)."
+            )
+            return True, msg
+
+        return False, ""
+
     def run_turn(self, user_prompt: str, cancellation_token: Optional[CancellationToken] = None) -> str:
         """
         Ejecuta el bucle ReAct completo para una solicitud del usuario.
@@ -212,6 +265,12 @@ class AgentOrchestrator:
         final_answer = ""
         total_tool_calls = 0
         total_tool_failures = 0
+
+        # Variables de control del Circuit Breaker Anti-Bucle
+        last_failed_command: Optional[str] = None
+        files_modified_since_cmd_fail: bool = False
+        consecutive_tool_counts: Dict[str, int] = {}
+        known_syntax_error_files: set = set()
 
         for iteration in range(1, self.max_iterations + 1):
             # Comprobar si se solicitó cancelación
@@ -368,19 +427,81 @@ class AgentOrchestrator:
                             self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
                             continue
 
-                # 4. Ejecución de la herramienta con cronometraje
+                # 4. Evaluación del Circuit Breaker Anti-Bucle
+                tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
+                breaker_tripped, breaker_msg = self._check_circuit_breaker(
+                    tool_name=tool_name,
+                    args=args,
+                    last_failed_command=last_failed_command,
+                    files_modified_since_cmd_fail=files_modified_since_cmd_fail,
+                    known_syntax_error_files=known_syntax_error_files,
+                    consecutive_tool_counts=consecutive_tool_counts,
+                )
+                if breaker_tripped:
+                    total_tool_failures += 1
+                    self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
+                    continue
+
+                # 5. Ejecución de la herramienta con cronometraje
                 tool_start = time.perf_counter()
                 tool_result = execute_tool(tool_name, args)
                 tool_dur_ms = (time.perf_counter() - tool_start) * 1000.0
 
-                # 5. Post-Tool Hook
+                # 6. Post-Tool Hook
                 tool_result = self.hooks.post_tool_use(tool_name, args, tool_result)
 
-                is_success = not ("Error" in tool_result or "Código de salida: 1" in tool_result or "falló" in tool_result.lower())
+                # 7. Evaluación del éxito del resultado
+                if tool_name == "run_command":
+                    is_cmd_success = ("Código de salida: 0" in tool_result) and not tool_result.startswith("Error:")
+                    is_success = is_cmd_success
+                else:
+                    is_success = not (
+                        tool_result.startswith("Error")
+                        or tool_result.startswith("⛔")
+                        or "SyntaxError" in tool_result
+                        or "error de sintaxis" in tool_result.lower()
+                        or "falló" in tool_result.lower()
+                    )
+
+                # 8. Actualización del estado del Circuit Breaker
+                if tool_name in ["write_file", "edit_file", "apply_patch"]:
+                    target_path = args.get("path")
+                    has_syntax_err = ("SyntaxError" in tool_result) or ("error de sintaxis" in tool_result.lower())
+                    if is_success and not has_syntax_err:
+                        files_modified_since_cmd_fail = True
+                        last_failed_command = None
+                        if target_path:
+                            known_syntax_error_files.discard(target_path)
+                            known_syntax_error_files.discard(Path(target_path).name)
+                    elif has_syntax_err and target_path:
+                        known_syntax_error_files.add(target_path)
+                        known_syntax_error_files.add(Path(target_path).name)
+
+                elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:
+                    files_modified_since_cmd_fail = True
+                    last_failed_command = None
+                    known_syntax_error_files.clear()
+
+                elif tool_name == "run_command":
+                    cmd_norm = args.get("command", "").strip().lower()
+                    if not is_success:
+                        last_failed_command = cmd_norm
+                        files_modified_since_cmd_fail = False
+                        if "syntaxerror" in tool_result.lower():
+                            for part in args.get("command", "").split():
+                                if part.endswith(".py"):
+                                    known_syntax_error_files.add(part)
+                                    known_syntax_error_files.add(Path(part).name)
+                    else:
+                        last_failed_command = None
+
                 if not is_success:
+                    consecutive_tool_counts[tool_call_key] = consecutive_tool_counts.get(tool_call_key, 0) + 1
                     total_tool_failures += 1
                     if iteration < self.max_iterations:
                         tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
+                else:
+                    consecutive_tool_counts.pop(tool_call_key, None)
 
                 self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
 

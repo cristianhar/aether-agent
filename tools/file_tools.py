@@ -122,7 +122,12 @@ def write_file(path: str, content: str) -> str:
         syntax_warn = check_syntax(file_path, content)
         msg = f"Éxito: Archivo '{path}' guardado correctamente ({len(content)} caracteres)."
         if syntax_warn:
-            msg += f" {syntax_warn}. Por favor corrígelo con otro comando."
+            msg += (
+                f"\n{syntax_warn}\n"
+                f"🚨 [ACCIÓN OBLIGATORIA]: El archivo '{path}' fue guardado pero CONTIENE UN ERROR DE SINTAXIS. "
+                "Tu PRÓXIMA herramienta DEBE ser 'edit_file' para corregir la línea indicada antes de cualquier otra cosa. "
+                "NUNCA llames a 'run_command' con un archivo que tiene errores de sintaxis."
+            )
         return msg
     except Exception as e:
         return f"Error al escribir en '{path}': {str(e)}"
@@ -181,7 +186,11 @@ def edit_file(path: str, target: str, replacement: str) -> str:
         syntax_warn = check_syntax(file_path, new_content)
         msg = f"Éxito: Archivo '{path}' actualizado correctamente con el bloque reemplazado{note}."
         if syntax_warn:
-            msg += f" {syntax_warn}. Por favor corrígelo con un edit_file adicional."
+            msg += (
+                f"\n{syntax_warn}\n"
+                f"🚨 [ACCIÓN OBLIGATORIA]: El archivo '{path}' sigue teniendo errores de sintaxis tras el reemplazo. "
+                "Llama a 'edit_file' nuevamente para corregir la línea señalada antes de ejecutar pruebas o comandos."
+            )
         return msg
     except Exception as e:
         return f"Error al guardar cambios en '{path}': {str(e)}"

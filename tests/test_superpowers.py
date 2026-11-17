@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import tempfile
 import pytest
 from tools.file_tools import edit_file, write_file
@@ -79,7 +80,8 @@ def test_web_search_and_fetch():
 
 
 def test_repo_map_generator():
-    repo_map = generate_repo_map(".", max_files=100)
+    repo_root = Path(__file__).resolve().parent.parent
+    repo_map = generate_repo_map(str(repo_root), max_files=100)
     assert "REPO-MAP" in repo_map
     assert "tools/" in repo_map
     assert "main.py" in repo_map

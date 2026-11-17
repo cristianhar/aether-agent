@@ -37,5 +37,14 @@ def test_bridge_server_endpoints():
             assert res_cancel.status_code == 200
             assert res_cancel.json()["success"] is True
 
+            # 5. Chequeo de slash command /vram y /mode
+            res_vram = client.post("/api/chat", json={"prompt": "/vram"})
+            assert res_vram.status_code == 200
+            assert res_vram.json()["is_command"] is True
+
+            res_mode = client.post("/api/chat", json={"prompt": "/mode plan"})
+            assert res_mode.status_code == 200
+            assert res_mode.json()["mode"] == "plan"
+
     finally:
         server.shutdown()
