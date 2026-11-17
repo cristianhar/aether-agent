@@ -22,6 +22,7 @@ class AgentOrchestrator:
         system_prompt: str = SYSTEM_PROMPT,
         max_iterations: int = 15,
         on_thought: Optional[Callable[[str], None]] = None,
+        on_token: Optional[Callable[[str], None]] = None,
         on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_tool_result: Optional[Callable[[str, str], None]] = None,
         confirm_callback: Optional[Callable[[str], bool]] = None,
@@ -33,6 +34,7 @@ class AgentOrchestrator:
 
         # Callbacks de UI (para Rich CLI)
         self.on_thought = on_thought
+        self.on_token = on_token
         self.on_tool_call = on_tool_call
         self.on_tool_result = on_tool_result
         self.confirm_callback = confirm_callback
@@ -162,18 +164,39 @@ class AgentOrchestrator:
                 "model": self.model,
                 "messages": messages,
                 "tools": TOOLS_SCHEMA,
-                "stream": False,
+                "stream": bool(self.on_token),
                 "options": {
                     "temperature": 0.2,  # Baja temperatura para código preciso y tool-calling
                     "num_ctx": 8192,
                 }
             }
 
+            content = ""
+            tool_calls = []
+
             try:
                 with httpx.Client(timeout=180.0) as client:
-                    resp = client.post(f"{self.host}/api/chat", json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
+                    if self.on_token:
+                        with client.stream("POST", f"{self.host}/api/chat", json=payload) as resp:
+                            resp.raise_for_status()
+                            for line in resp.iter_lines():
+                                if not line:
+                                    continue
+                                chunk = json.loads(line)
+                                msg_chunk = chunk.get("message", {})
+                                token = msg_chunk.get("content", "")
+                                if token:
+                                    content += token
+                                    self.on_token(token)
+                                if msg_chunk.get("tool_calls"):
+                                    tool_calls.extend(msg_chunk["tool_calls"])
+                    else:
+                        resp = client.post(f"{self.host}/api/chat", json=payload)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        msg = data.get("message", {})
+                        content = msg.get("content", "")
+                        tool_calls = msg.get("tool_calls", [])
             except httpx.ConnectError:
                 return (
                     f"Error de conexión: No se pudo contactar a Ollama en {self.host}.\n"
@@ -182,18 +205,14 @@ class AgentOrchestrator:
             except Exception as e:
                 return f"Error al comunicar con Ollama: {str(e)}"
 
-            msg = data.get("message", {})
-            content = msg.get("content", "")
-            tool_calls = msg.get("tool_calls", [])
-
             # Fallback inteligente: si Ollama no pobló tool_calls nativo pero incluyó llamadas en content
             if not tool_calls and content:
                 extracted = self._extract_tool_calls_from_content(content)
                 if extracted:
                     tool_calls = extracted
 
-            # Notificar pensamiento/contenido al usuario si existe
-            if content and self.on_thought:
+            # Notificar pensamiento si no hubo streaming de tokens
+            if content and self.on_thought and not self.on_token:
                 self.on_thought(content)
 
             # Si el modelo no solicita ninguna herramienta, ha concluido su tarea

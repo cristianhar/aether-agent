@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List
 
 from tools.file_tools import edit_file, read_file, write_file
 from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, undo_checkpoint
+from tools.repomap import generate_repo_map
 from tools.search_tools import list_directory, search_codebase, get_file_outline
 from tools.shell_tools import run_command
 from tools.web_tools import search_web, fetch_web_page
@@ -243,6 +244,26 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "required": ["url"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_repo_map",
+            "description": "[SUPERPODER REPO-MAP] Retorna el mapa arquitectónico completo del repositorio con archivos, clases, métodos y firmas en solo ~300 tokens. Úsalo como primer paso para entender cualquier proyecto desconocido.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "root_dir": {
+                        "type": "string",
+                        "description": "Directorio raíz a mapear (por defecto '.')."
+                    },
+                    "max_files": {
+                        "type": "integer",
+                        "description": "Número máximo de archivos a listar (por defecto 40)."
+                    }
+                }
+            }
+        }
     }
 ]
 
@@ -255,6 +276,7 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "search_codebase": search_codebase,
     "list_directory": list_directory,
     "get_file_outline": get_file_outline,
+    "get_repo_map": generate_repo_map,
     "search_web": search_web,
     "fetch_web_page": fetch_web_page,
     "create_checkpoint": create_checkpoint,

@@ -3,6 +3,7 @@ import tempfile
 import pytest
 from tools.file_tools import edit_file, write_file
 from tools.search_tools import get_file_outline
+from tools.repomap import generate_repo_map
 from tools.web_tools import search_web, fetch_web_page
 
 def test_fuzzy_matching_edit():
@@ -75,3 +76,11 @@ def test_web_search_and_fetch():
     # Test fetch_web_page con una URL segura
     page = fetch_web_page("https://example.com", max_chars=500)
     assert ("Example Domain" in page) or ("Error al descargar" in page)
+
+
+def test_repo_map_generator():
+    repo_map = generate_repo_map(".", max_files=20)
+    assert "REPO-MAP" in repo_map
+    assert "tools/" in repo_map
+    assert "main.py" in repo_map
+

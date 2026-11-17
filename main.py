@@ -3,6 +3,7 @@ Punto de entrada de la consola interactiva CLI para AETHER Agent.
 Interfaz enriquecida construida con 'rich' y 'prompt_toolkit'.
 """
 
+import subprocess
 import sys
 from pathlib import Path
 from rich.console import Console
@@ -14,6 +15,7 @@ from prompt_toolkit.history import InMemoryHistory
 
 from agent.orchestrator import AgentOrchestrator
 from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, undo_checkpoint
+from tools.repomap import generate_repo_map
 
 console = Console()
 
@@ -29,7 +31,7 @@ def render_banner(model_name: str, ollama_ok: bool):
 [bold]Estado de inferencia:[/] [{status_color}]{status_text}[/{status_color}]
 [bold]Directorio de trabajo:[/] [yellow]{Path.cwd()}[/yellow]
 
-[dim]Comandos especiales: /diff | /undo | /checkpoint | /status | /clear | /model <nombre> | /exit[/dim]
+[dim]Comandos especiales: /map | /test | /commit | /diff | /undo | /checkpoint | /model <nombre> | /voice | /clear | /exit[/dim]
 """
     console.print(Panel(banner_text, border_style="cyan", title="[bold]AETHER v0.1.0[/bold]"))
 
@@ -101,8 +103,53 @@ def main():
 
         # Comandos especiales
         if user_input in ["/exit", "/quit"]:
-            console.print("[dim]Sesión finalizada.[/dim]")
+            console.print("[dim]Sesión finalizada. ¡Hasta pronto![/dim]")
             break
+
+        elif user_input == "/map":
+            repo_map = generate_repo_map()
+            console.print(Panel(repo_map, title="[bold cyan]📦 Arquitectura del Repositorio (Repo-Map)[/bold cyan]", border_style="cyan"))
+            continue
+
+        elif user_input.startswith("/test"):
+            test_target = user_input[len("/test"):].strip()
+            cmd = ["pytest", "-v"] if not test_target else ["pytest", "-v", test_target]
+            console.print(f"[bold yellow]🧪 Ejecutando pruebas con {' '.join(cmd)}...[/bold yellow]")
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+                out = proc.stdout.strip() or proc.stderr.strip()
+                color = "green" if proc.returncode == 0 else "red"
+                status_title = "✅ Tests Pasaron" if proc.returncode == 0 else "❌ Tests Fallaron"
+                console.print(Panel(out, title=f"[{color}]{status_title}[/{color}]", border_style=color))
+
+                if proc.returncode != 0:
+                    auto_fix = console.input("\n[bold yellow]¿Deseas que AETHER repare los errores automáticamente? (S/n): [/bold yellow]").strip().lower()
+                    if auto_fix in ["", "s", "si", "y", "yes"]:
+                        fix_prompt = f"Las pruebas fallaron con el siguiente resultado:\n{out}\nAnaliza el error y repara el código de inmediato para que todos los tests pasen."
+                        with console.status("[bold cyan]AETHER auto-reparando el código...[/bold cyan]", spinner="dots"):
+                            fix_answer = orchestrator.run_turn(fix_prompt)
+                        console.print(Markdown(fix_answer))
+            except FileNotFoundError:
+                console.print("[bold red]No se encontró pytest instalado en el entorno. Ejecuta 'pip install pytest'.[/bold red]")
+            continue
+
+        elif user_input.startswith("/commit"):
+            commit_msg = user_input[len("/commit"):].strip()
+            diff_text = get_git_diff()
+            if not diff_text or "No hay diferencias" in diff_text:
+                console.print("[yellow]No hay modificaciones pendientes de commitear en el proyecto.[/yellow]")
+                continue
+
+            if not commit_msg:
+                commit_msg = f"feat(agent): autonomous update in {Path.cwd().name}"
+
+            subprocess.run(["git", "add", "-A"], capture_output=True)
+            res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True, encoding="utf-8")
+            if res.returncode == 0:
+                console.print(f"[bold green]✅ Commit realizado:[/] {commit_msg}")
+            else:
+                console.print(f"[bold red]Error en commit:[/] {res.stderr.strip() or res.stdout.strip()}")
+            continue
 
         elif user_input == "/diff":
             diff = get_git_diff()
@@ -135,6 +182,18 @@ def main():
                 console.print(f"[bold yellow]Modelo actual: {orchestrator.model}[/bold yellow]")
             continue
 
+        elif user_input == "/voice":
+            voice_info = """
+### 🎙️ Integración con Asistente de Voz Local (Hands-Free Coding)
+Para controlar tu desarrollo por voz en paralelo con AETHER:
+1. Abre tu terminal en `c:\\Users\\evo_l\\Desktop\\WebsPage\\ChatGptVoiceProject`.
+2. Inicia el servidor con `run.bat`.
+3. Activa el modo manos libres en la interfaz web (`http://localhost:8000`).
+4. Cualquier comando o instrucción de voz que dictes se procesará con latencia ultrabaja (<50ms).
+"""
+            console.print(Panel(Markdown(voice_info), title="🎙️ Voice Assistant Integration", border_style="cyan"))
+            continue
+
         elif user_input == "/clear":
             orchestrator.memory.clear()
             console.print("[bold cyan]Historial y contexto reiniciados.[/bold cyan]")
@@ -142,13 +201,17 @@ def main():
 
         elif user_input == "/help":
             help_text = """
-### Comandos Disponibles:
-- **/diff**: Muestra los cambios actuales de código frente al último commit.
+### 🛠️ Comandos Especiales Slash (`/`):
+- **/map**: Muestra el mapa arquitectónico completo del repositorio (archivos, clases, funciones).
+- **/test [archivo]**: Ejecuta pruebas con pytest y ofrece auto-sanación instantánea si algo falla.
+- **/commit [mensaje]**: Hace `git add -A` y commit de todos los cambios de forma limpia.
+- **/diff**: Muestra los cambios actuales de código frente al último commit con resaltado de sintaxis.
 - **/status**: Muestra el estado de archivos modificados en Git.
-- **/checkpoint [mensaje]**: Guarda un punto de restauración seguro.
 - **/undo**: Revierte al último checkpoint seguro en 1 segundo.
-- **/model <nombre>**: Cambia el modelo de Ollama en caliente (ej: `/model qwen2.5-coder:3b`).
-- **/clear**: Limpia el historial de conversación actual.
+- **/checkpoint [mensaje]**: Guarda un punto de restauración seguro con Git.
+- **/model <nombre>**: Cambia el modelo de Ollama en caliente (ej: `/model qwen2.5-coder:7b`).
+- **/voice**: Guía de conexión con el Asistente de Voz Local en tiempo real.
+- **/clear**: Limpia el historial de conversación para liberar memoria de contexto.
 - **/exit**: Cierra la sesión de AETHER.
 """
             console.print(Markdown(help_text))
