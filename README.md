@@ -6,14 +6,15 @@
 
 **Local-First Autonomous AI Software Engineering Agent & Interactive CLI**
 
-[![Tests](https://img.shields.io/badge/tests-53%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-61%20passed-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
 [![Repository](https://img.shields.io/badge/github-cristianhar%2Faether--agent-181717?logo=github)](https://github.com/cristianhar/aether-agent)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
 [![Hardware](https://img.shields.io/badge/hardware-NVIDIA%20RTX%204060%20Optimized-76b900.svg)]()
+[![Desktop](https://img.shields.io/badge/desktop-Tauri%20v2%20%2B%20Monaco-blueviolet.svg)]()
 [![API Cost](https://img.shields.io/badge/cost-$0%20Offline-success.svg)]()
 
-[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Master Plan](./docs/plan_maestro.md) • [GitHub Repository](https://github.com/cristianhar/aether-agent)
+[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Master Plan](./docs/plan_maestro.md) • [Tauri Desktop Architecture](./docs/desktop_tauri_architecture.md) • [GitHub Repository](https://github.com/cristianhar/aether-agent)
 
 </div>
 
