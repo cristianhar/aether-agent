@@ -6,7 +6,7 @@
 
 **Local-First Autonomous AI Software Engineering Agent & Interactive CLI**
 
-[![Tests](https://img.shields.io/badge/tests-63%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-65%20passed-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
 [![Repository](https://img.shields.io/badge/github-cristianhar%2Faether--agent-181717?logo=github)](https://github.com/cristianhar/aether-agent)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()

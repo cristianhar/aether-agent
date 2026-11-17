@@ -25,7 +25,7 @@ def get_hardware_vram_status() -> str:
         )
         output = proc.stdout.strip()
     except FileNotFoundError:
-        return "❌ Error: El comando 'ollama' no se encuentra en el PATH del sistema."
+        return "ℹ️ Ollama no está instalado o no se encuentra en el PATH (Hardware GPU en reposo)."
     except Exception as e:
         return f"❌ Error consultando Ollama ps: {str(e)}"
 
