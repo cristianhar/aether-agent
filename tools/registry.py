@@ -17,6 +17,8 @@ from tools.diagnostics import get_diagnostics
 from tools.patch_engine import PatchEngine
 from tools.process_manager import ProcessManager
 from tools.agent_tools import update_plan, request_approval, get_project_instructions
+from tools.code_intel import find_definition, find_references, get_dependencies
+from tools.vram_monitor import get_hardware_vram_status
 
 # Esquemas de herramientas compatibles con Ollama / OpenAI
 TOOLS_SCHEMA: List[Dict[str, Any]] = [
@@ -538,6 +540,98 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_definition",
+            "description": "Code Intelligence: Encuentra la definición de una función, método o clase en el código Python usando el AST.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Nombre de la función, clase o método a localizar."
+                    },
+                    "root_dir": {
+                        "type": "string",
+                        "description": "Directorio raíz donde buscar (por defecto '.')."
+                    }
+                },
+                "required": ["symbol"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_references",
+            "description": "Code Intelligence: Encuentra todas las llamadas y usos de un símbolo en los archivos del proyecto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Nombre del símbolo a buscar."
+                    },
+                    "root_dir": {
+                        "type": "string",
+                        "description": "Directorio base de búsqueda (por defecto '.')."
+                    }
+                },
+                "required": ["symbol"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_dependencies",
+            "description": "Code Intelligence: Mapea los imports y el gráfico de dependencias locales y externas de un archivo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta del archivo a inspeccionar."
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_hardware_vram_status",
+            "description": "Hardware Monitor: Consulta el estado en tiempo real de la GPU (VRAM de 6 GB, modelos cargados en Ollama y CPU offloading).",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_skill",
+            "description": "Skills Runtime: Ejecuta habilidades complejas automatizadas ('review' para auditoría de calidad, 'test_gen' para generar pruebas, 'dependencies' para acoplamiento).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {
+                        "type": "string",
+                        "enum": ["review", "test_gen", "dependencies"],
+                        "description": "Nombre de la habilidad a ejecutar."
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Archivo o directorio objetivo."
+                    }
+                },
+                "required": ["skill_name"]
+            }
+        }
     }
 ]
 
@@ -604,6 +698,11 @@ def safe_undo_checkpoint_tool(snapshot_id: str = None) -> str:
     return f"❌ Fallo al restaurar checkpoint: {msg}"
 
 
+def execute_skill_tool(skill_name: str, target: str = None) -> str:
+    from agent.skills import execute_skill
+    return execute_skill(skill_name, target)
+
+
 # Mapa de ejecutores en Python
 TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "read_file": read_file,
@@ -634,6 +733,11 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "update_plan": update_plan,
     "request_approval": request_approval,
     "get_project_instructions": get_project_instructions,
+    "find_definition": find_definition,
+    "find_references": find_references,
+    "get_dependencies": get_dependencies,
+    "get_hardware_vram_status": get_hardware_vram_status,
+    "execute_skill": execute_skill_tool,
 }
 
 
