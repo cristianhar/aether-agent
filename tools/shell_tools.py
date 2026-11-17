@@ -127,6 +127,16 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
 
     try:
         normalized_command = command.strip()
+
+        # Inyectar entorno virtual (.venv / venv) en PATH si existe en el proyecto
+        env = os.environ.copy()
+        for venv_name in [".venv", "venv"]:
+            venv_bin = work_dir / venv_name / ("Scripts" if os.name == "nt" else "bin")
+            if venv_bin.exists():
+                env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
+                env["VIRTUAL_ENV"] = str(venv_bin.parent)
+                break
+
         if os.name == "nt":
             # Normalización inteligente de comandos Linux/POSIX hacia Windows
             if normalized_command.startswith("python3 "):
@@ -142,6 +152,7 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
             process = subprocess.run(
                 args,
                 cwd=str(work_dir),
+                env=env,
                 shell=False,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
@@ -154,6 +165,7 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
             process = subprocess.run(
                 command,
                 cwd=str(work_dir),
+                env=env,
                 shell=True,
                 executable="/bin/bash" if Path("/bin/bash").exists() else None,
                 stdin=subprocess.DEVNULL,

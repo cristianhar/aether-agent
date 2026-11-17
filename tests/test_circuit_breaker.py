@@ -228,3 +228,26 @@ def test_shell_diagnostics_detects_pytest_approx_in_unittest():
         assert diag is not None
         assert "INCOMPATIBILIDAD DE FRAMEWORK DE TEST" in diag
         assert "pytest.approx" in diag
+
+
+def test_package_install_unblocks_failed_command():
+    """Verifica que un comando exitoso de pip/npm install limpie los comandos fallidos previos."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    blocked, _ = orchestrator._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "python -m pytest"},
+        failed_commands={"python -m pytest"},
+        files_modified_since_cmd_fail=False
+    )
+    assert blocked is True
+
+    # Si se modificaron archivos o cambió el entorno (pip install), ya no debe estar bloqueado
+    unblocked, _ = orchestrator._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "python -m pytest"},
+        failed_commands=set(),
+        files_modified_since_cmd_fail=True
+    )
+    assert unblocked is False

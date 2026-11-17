@@ -227,8 +227,8 @@ class AgentOrchestrator:
                 msg = (
                     f"⛔ [CIRCUIT BREAKER]: El comando '{args.get('command')}' ya falló previamente y NO has modificado ningún archivo en el disco desde entonces.\n"
                     "• Volver a ejecutar el mismo comando sin cambios en disco producirá exactamente el mismo error.\n"
-                    "• Si la sintaxis del script ya fue validada con py_compile o el juego usa input() interactivo, NO lo vuelvas a ejecutar en la consola de pruebas.\n"
-                    "• ACCIÓN OBLIGATORIA: Si aún no has corregido el código, usa 'edit_file'. Si la verificación de sintaxis ya concluyó con éxito, concluye el turno e informa al usuario en tu respuesta final para que lo ejecute en su propia terminal."
+                    "• Si faltaba una librería o paquete, instálala usando 'pip install <libreria>'.\n"
+                    "• ACCIÓN OBLIGATORIA: Si aún no has corregido el código, usa 'edit_file'. Si la verificación ya concluyó con éxito, concluye el turno e informa al usuario en tu respuesta final para que lo ejecute en su propia terminal."
                 )
                 return True, msg
 
@@ -533,7 +533,15 @@ class AgentOrchestrator:
                         last_failed_tool_key = None
                         last_assertion_error = None
                         assertion_error_repeat_count = 0
-                        last_failed_tool_key = None
+                        # Si fue un comando de instalación de paquetes, limpiar fallos de comandos previos
+                        # porque el entorno de dependencias cambió
+                        pkg_install_prefixes = (
+                            "pip install", "pip3 install", "python -m pip install",
+                            "npm install", "npm i ", "pnpm add", "pnpm install", "yarn add"
+                        )
+                        if any(cmd_norm.startswith(p) for p in pkg_install_prefixes):
+                            failed_commands.clear()
+                            files_modified_since_cmd_fail = True
 
                 if not is_success:
                     last_failed_tool_key = tool_call_key
