@@ -1,5 +1,4 @@
 @echo off
-setlocal enabledelayedexpansion
 title AETHER IDE - Launcher Completo
 cd /d "%~dp0"
 
@@ -15,14 +14,13 @@ if not exist ".venv\Scripts\python.exe" (
     echo [1/4] Creando entorno virtual .venv...
     python -m venv .venv
     echo [1/4] Instalando dependencias de Python...
-    .venv\Scripts\pip install -r requirements.txt
+    call .venv\Scripts\pip.exe install -r requirements.txt
 ) else (
     echo [1/4] [OK] Entorno virtual Python listo.
 )
 
 REM 2. Verificar dependencias de Node en desktop/
-if not exist "desktop
-ode_modules" (
+if not exist "desktop\node_modules" (
     echo [2/4] Instalando dependencias de Node en desktop/...
     pushd desktop
     call npm install
@@ -37,7 +35,7 @@ curl.exe --connect-timeout 2 -s http://127.0.0.1:11434/api/tags >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo       Ollama no detectado. Iniciando 'ollama serve' en segundo plano...
     start "AETHER_OLLAMA" /B ollama serve
-    timeout /t 3 /nobreak >nul
+    ping 127.0.0.1 -n 4 >nul
 )
 echo       [OK] Ollama activo y listo.
 
@@ -51,22 +49,19 @@ start "AETHER_BRIDGE_SERVER" /min cmd /c ""%~dp0.venv\Scripts\python.exe" "%~dp0
 
 REM Esperar respuesta del puente
 echo       Esperando conexion con el puente...
-set attempts=0
-:WAIT_BRIDGE
-set /a attempts+=1
-timeout /t 1 /nobreak >nul
-curl.exe --connect-timeout 1 -s http://127.0.0.1:8765/api/status >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    if !attempts! LSS 10 goto WAIT_BRIDGE
-    echo       [AVISO] El puente esta demorando, continuando con el inicio...
-) else (
-    echo       [OK] Servidor Puente conectado y respondiendo.
+for /L %%i in (1,1,10) do (
+    curl.exe --connect-timeout 1 -s http://127.0.0.1:8765/api/status >nul 2>&1
+    if not errorlevel 1 goto BRIDGE_READY
+    ping 127.0.0.1 -n 2 >nul
 )
+
+:BRIDGE_READY
+echo       [OK] Servidor Puente conectado y respondiendo.
 
 echo.
 echo ======================================================================
 echo    AETHER IDE DESKTOP INICIANDO (Tauri v2 + Monaco Editor)
-echo    Cierra la ventana de AETHER IDE o presiona Ctrl+C para detener todo.
+echo    Cierra la ventana de AETHER IDE para terminar la sesion.
 echo ======================================================================
 echo.
 
@@ -83,4 +78,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8765" ^| findstr "LISTENING
     taskkill /f /pid %%a >nul 2>&1
 )
 echo [AETHER] Todo cerrado correctamente.
-exit /b %TAURI_EXIT%
+if %TAURI_EXIT% NEQ 0 (
+    echo [AETHER] La aplicacion finalizo con codigo de salida: %TAURI_EXIT%
+    pause
+)

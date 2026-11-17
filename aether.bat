@@ -54,16 +54,17 @@ echo.
 echo [AETHER] Verificando entorno virtual y Ollama...
 if not exist ".venv\Scripts\python.exe" (
     python -m venv .venv
-    .venv\Scripts\pip install -r requirements.txt
+    call .venv\Scripts\pip.exe install -r requirements.txt
 )
 curl.exe --connect-timeout 2 -s http://127.0.0.1:11434/api/tags >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [AETHER] Iniciando Ollama...
     start "" /B ollama serve
-    timeout /t 3 /nobreak >nul
+    ping 127.0.0.1 -n 4 >nul
 )
 echo [AETHER] Iniciando consola autonoma interactiva...
 .venv\Scripts\python.exe main.py
+pause
 goto END
 
 :RUN_WEB
@@ -73,13 +74,14 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8765" ^| findstr "LISTENING
     taskkill /f /pid %%a >nul 2>&1
 )
 start "AETHER_BRIDGE_SERVER" /min cmd /c ""%~dp0.venv\Scripts\python.exe" "%~dp0bridge\server.py""
-timeout /t 2 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 echo [AETHER] Abriendo interfaz en el navegador...
 start http://localhost:1420
 pushd desktop
 call npm run dev
 popd
 taskkill /fi "WINDOWTITLE eq AETHER_BRIDGE_SERVER*" /t /f >nul 2>&1
+pause
 goto END
 
 :RUN_TESTS
@@ -93,6 +95,7 @@ goto END
 echo.
 echo [AETHER] Iniciando Servidor Puente en primer plano en http://127.0.0.1:8765...
 .venv\Scripts\python.exe bridge/server.py
+pause
 goto END
 
 :EXIT
