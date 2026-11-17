@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  aether-ide:
+    build: .
+    container_name: aether-agent
+    stdin_open: true
+    tty: true
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ./:/workspace/project
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

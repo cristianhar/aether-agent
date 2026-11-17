@@ -1,111 +1,141 @@
-# AETHER IDE — Local Agentic Developer (100% Offline)
+<div align="center">
 
-> **Agente Programador Autónomo Local estilo Aider / Claude Code / Antigravity CLI impulsado por Ollama y optimizado para NVIDIA RTX 4060 (6 GB VRAM).**
+<img src="./assets/logo.svg" alt="AETHER IDE Logo" width="100%" />
 
----
+# AETHER IDE
 
-## 🚀 Inicio Rápido
+**Local-First Autonomous AI Software Engineering Agent & Interactive CLI**
 
-### 1. Requisitos Previos
-- **Ollama** instalado y en ejecución en Windows.
-- **Python 3.11+** o **3.12+**.
-- **Git** configurado.
+[![Tests](https://img.shields.io/badge/tests-24%20passed-brightgreen.svg)]()
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
+[![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
+[![Hardware](https://img.shields.io/badge/hardware-NVIDIA%20RTX%204060%20Optimized-76b900.svg)]()
+[![API Cost](https://img.shields.io/badge/cost-$0%20Offline-success.svg)]()
 
-### 2. Descargar el Modelo Recomendado
-En tu terminal de PowerShell:
-```powershell
-# Modelo de código de 7B (Óptimo para razonamiento de ingeniería y tool-calling)
-ollama pull qwen2.5-coder:7b
+[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Master Plan](./docs/plan_maestro.md)
 
-# Opcional (versión ultra ligera de 3B para menor consumo de VRAM)
-ollama pull qwen2.5-coder:3b
-```
-
-### 3. Ejecutar el Agente
-Puedes iniciarlo de dos formas:
-
-**Opción A — Lanzador directo (Windows):**
-```powershell
-.\aether.bat
-```
-
-**Opción B — Manualmente desde tu terminal:**
-```powershell
-# Activar entorno virtual
-.venv\Scripts\activate
-
-# Ejecutar CLI interactiva
-python main.py
-```
+</div>
 
 ---
 
-## 🛠️ Herramientas Nativas del Agente
+## ⚡ Overview
 
-El agente cuenta con un bucle ReAct (*Think -> Act -> Observe -> Verify*) gobernado por herramientas atómicas tipadas con Pydantic y JSON Schema:
+**AETHER IDE** is an autonomous AI coding assistant running **100% offline and locally** on your GPU via Ollama (`qwen2.5-coder:7b`). It brings together the terminal-first autonomy of Claude Code, the surgical code editing and AST repo-mapping of Cursor/Aider, and the zero-latency responsiveness of an offline development environment.
 
-| Herramienta | Función |
+Unlike simple chat interfaces, AETHER operates as an active software engineer: it reads your project structure, inspects abstract syntax trees, writes physical files to disk, executes unit tests in subshells, detects runtime tracebacks, and automatically self-heals failing code in closed feedback loops.
+
+---
+
+## 🌟 Key Features & Superpowers
+
+| Capability | Technical Implementation | Practical Benefit |
+| :--- | :--- | :--- |
+| **Autonomous ReAct Loop** | Pydantic JSON schemas with Ollama `/api/chat` streaming | The agent decides tools, runs them, observes terminal outputs, and iterates automatically. |
+| **Self-Healing Feedback Engine** | Traceback capture and auto-guided recovery prompts | When a unit test or script throws an exception (e.g. `EOFError`, `SyntaxError`), AETHER writes patches or test mocks and re-executes until passing green (`exit code 0`). |
+| **Compact Repo-Map** | AST symbol extraction for classes, signatures, and functions | Maps multi-file repositories in ~300 tokens without overflowing context windows. |
+| **Surgical Editing & Fuzzy Matching** | Indentation-tolerant matching with AST validation | Edits target code blocks without breaking indentation or overwriting whole files. |
+| **Operational Modes** | Hook system supporting `/mode ask`, `/mode agent`, `/mode plan` | Read-only inspection in `ask` mode; full file creation and execution in `agent` mode. |
+| **Claude-Code Style Subagents** | Isolated conversation contexts sharing the local model | Offload heavy research or log audits to auxiliary subagents without polluting primary memory. |
+| **Git Safety Checkpoints** | Instant snapshot commits and rollback (`undo_checkpoint`) | Safely revert code modifications in less than 1 second. |
+| **Dynamic Project Navigation** | `/cd <path>` with automatic project re-indexing | Jump between repositories seamlessly on your computer. |
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TD
+    User["User Terminal Input"] --> Orch["Agent Orchestrator"]
+    Orch --> Hooks["Hook Manager (PreToolUse)"]
+    Hooks --> LLM["Local Ollama Runtime (Qwen 2.5 Coder 7B)"]
+    LLM --> Decision{"Tool Call Detected?"}
+    Decision -- Yes --> ToolExec["Atomic Tool Dispatcher"]
+    ToolExec --> SysOps["Disk I/O / Shell Subprocess / Git CLI"]
+    SysOps --> Feedback["Execution Feedback & Traceback"]
+    Feedback --> HooksPost["Hook Manager (PostToolUse)"]
+    HooksPost --> Orch
+    Decision -- No --> FinalResp["Terminal UI (Rich / Markdown)"]
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+- **Python:** 3.10, 3.11, or 3.12 installed.
+- **Ollama:** Installed and running locally (`ollama serve`).
+- **Recommended Model:**
+  ```bash
+  ollama pull qwen2.5-coder:7b
+  ```
+
+### 2. Installation
+Clone the repository and install dependencies:
+```bash
+git clone https://github.com/cristianhar/aether-ide.git
+cd aether-ide
+python -m venv .venv
+
+# Windows:
+.\.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### 3. Launching AETHER
+- **Windows (Single click launcher):**
+  ```cmd
+  aether.bat
+  ```
+- **CLI Direct Launch:**
+  ```bash
+  python main.py
+  ```
+
+---
+
+## 🛠️ Slash Commands Reference
+
+| Slash Command | Description |
 | :--- | :--- |
-| `read_file(path, start_line, end_line)` | Lee fragmentos con numeración de líneas sin saturar la VRAM. |
-| `edit_file(path, target, replacement)` | Modificación atómica por coincidencia exacta de caracteres e indentación. |
-| `write_file(path, content)` | Creación de archivos nuevos asegurando directorios padre. |
-| `run_command(command, cwd)` | Ejecución controlada en PowerShell (captura `stdout`, `stderr` y códigos de salida con timeout de seguridad). |
-| `search_codebase(query, path)` | Búsqueda léxica ultra rápida mediante `ripgrep` o fallback en Python. |
-| `list_directory(path, max_depth)` | Exploración del árbol de carpetas ignorando dependencias y temporales. |
-| `create_checkpoint(message)` | Punto de restauración Git antes de cambios extensos. |
-| `undo_checkpoint()` | Reversión instantánea al estado seguro anterior. |
-| `get_git_diff()` | Inspección de diferencias en código modificado. |
+| `/cd <path>` | Switch active workspace directory and generate a fresh Repo-Map. |
+| `/mode [agent\|ask\|plan]` | Switch between autonomous agent mode, read-only inspection, and architectural planning. |
+| `/map` | Display complete repository structure with class outlines and function signatures. |
+| `/test [target]` | Run test suites (`pytest`) and trigger automatic self-repair if tests fail. |
+| `/diff` | Display colorized syntax-highlighted git diff of pending uncommitted changes. |
+| `/commit [message]` | Stage all changes and generate a clean git commit. |
+| `/export [file.md]` | Export the active session reasoning transcript and generated code into Markdown. |
+| `/undo` | Roll back to the last safe checkpoint snapshot in 1 second. |
+| `/model <name>` | Switch local models on-the-fly (e.g. `/model qwen2.5-coder:7b` or `/model deepseek-r1:7b`). |
+| `/status` | View active model, VRAM token telemetry, and Git working tree status. |
+| `/clear` | Reset context memory to release GPU VRAM. |
+| `/exit` | Exit the CLI session safely. |
 
 ---
 
-## ⌨️ Comandos Especiales en la CLI
+## 🧪 Testing
 
-Dentro de la sesión interactiva `AETHER ❯`:
+AETHER comes with a full automated test suite verifying file editing, syntax linting, repo-mapping, shell execution, and hook policies:
 
-* `/diff` — Muestra el diff de cambios no commiteados con resaltado de sintaxis.
-* `/status` — Lista los archivos modificados o creados.
-* `/checkpoint [mensaje]` — Guarda un snapshot manual con Git.
-* `/undo` — Deshace los cambios del agente y restaura el proyecto en 1 segundo.
-* `/model <nombre>` — Cambia el modelo de Ollama en caliente (ej: `/model qwen2.5-coder:3b`).
-* `/clear` — Limpia el historial de conversación actual.
-* `/help` — Muestra la lista de comandos.
-* `/exit` — Cierra la sesión.
-
----
-
-## 🧪 Pruebas Automatizadas (Quality Gate)
-
-El proyecto incluye una suite de pruebas unitarias para garantizar la confiabilidad del bucle de edición y seguridad:
-
-```powershell
-.venv\Scripts\python -m pytest tests/ -v
+```bash
+pytest -v
 ```
 
 ---
 
-## 📁 Estructura del Proyecto
+## 🐳 Docker Deployment (Optional)
 
-```text
-IDE/
-├── agent/
-│   ├── memory.py            # Gestor de historial y recorte dinámico de contexto
-│   ├── orchestrator.py      # Bucle ReAct y comunicación con Ollama
-│   ├── prompts.py           # System prompts de ingeniería de software
-│   └── safety.py            # Filtro de comandos peligrosos
-├── tools/
-│   ├── file_tools.py        # read_file, edit_file, write_file
-│   ├── git_tools.py         # create_checkpoint, undo_checkpoint, get_git_diff
-│   ├── registry.py          # Catálogo OpenAPI de herramientas y despachador
-│   ├── search_tools.py      # list_directory y search_codebase
-│   └── shell_tools.py       # run_command con sandbox y timeouts
-├── tests/
-│   ├── test_file_tools.py
-│   ├── test_git_tools.py
-│   ├── test_search_tools.py
-│   └── test_shell_tools.py
-├── aether.bat               # Lanzador para Windows
-├── main.py                  # Consola interactiva enriquecida (Rich CLI)
-├── requirements.txt         # Dependencias
-└── README.md
+Run containerized with connection to host Ollama:
+```bash
+docker compose up -d
 ```
 
+---
+
+## 👤 Author
+
+Developed by **Cristian Arboleda** ([@cristianhar](https://github.com/cristianhar))
+
+Distributed under the **MIT License**.
