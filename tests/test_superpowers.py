@@ -84,3 +84,31 @@ def test_repo_map_generator():
     assert "tools/" in repo_map
     assert "main.py" in repo_map
 
+
+def test_hook_manager_ask_mode():
+    from agent.hooks import HookManager
+    hooks = HookManager(mode="ask")
+    # write_file debe ser bloqueada en modo ask
+    allowed, reason = hooks.pre_tool_use("write_file", {"path": "a.txt", "content": "test"})
+    assert not allowed
+    assert "ASK" in reason
+
+    # read_file debe ser permitida en modo ask
+    allowed_read, _ = hooks.pre_tool_use("read_file", {"path": "a.txt"})
+    assert allowed_read
+
+
+def test_context_compaction():
+    from agent.memory import ConversationMemory
+    mem = ConversationMemory(system_prompt="system", max_turns=8)
+    mem.add_user_message("start")
+    for i in range(12):
+        mem.add_assistant_message(f"step {i}")
+        mem.add_tool_result(name="run_command", content=f"output {i}")
+    
+    assert len(mem.get_messages()) <= 8
+    # Verificar que el mensaje inicial se preserva
+    assert mem.get_messages()[0]["role"] == "system"
+    assert mem.get_messages()[1]["content"] == "start"
+
+

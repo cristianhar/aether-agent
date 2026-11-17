@@ -52,29 +52,42 @@ class ConversationMemory:
         total_chars = sum(len(str(m.get("content", ""))) for m in self.messages)
         return total_chars // 4
 
+    def compact_memory(self):
+        """
+        Compactación de contexto inspirada en Claude Code:
+        Sintetiza los turnos antiguos de herramientas en un resumen ejecutivo
+        para que el modelo conserve el hilo de las decisiones tomadas sin saturar la VRAM.
+        """
+        if len(self.messages) <= 6:
+            return
+
+        system_msg = self.messages[0]
+        initial_user_msg = self.messages[1]
+
+        actions = []
+        for m in self.messages[2:-4]:
+            if m.get("role") == "tool":
+                content = str(m.get("content", ""))
+                first_line = content.splitlines()[0] if content else ""
+                actions.append(first_line[:80])
+
+        compaction_text = "[COMPACTACIÓN DE CONTEXTO]: Acciones previas clave:\n- " + "\n- ".join(actions[-6:] if actions else ["Exploración previa"])
+        compaction_summary = {
+            "role": "system",
+            "content": compaction_text
+        }
+
+        recent = self.messages[-4:]
+        while recent and recent[0].get("role") == "tool":
+            recent.pop(0)
+
+        self.messages = [system_msg, initial_user_msg, compaction_summary] + recent
+
     def _trim_if_needed(self):
         """
         Conserva siempre el system prompt (índice 0) y el mensaje de solicitud original (índice 1).
-        Si se supera max_turns, descarta los turnos de herramientas más antiguos.
+        Si se supera max_turns o 5000 tokens estimados, compacta el contexto automáticamente.
         """
-        if len(self.messages) <= self.max_turns:
-            return
-
-        # Mantener system prompt (0) y mensaje inicial de usuario (1)
-        system_msg = self.messages[0]
-        initial_user_msg = self.messages[1] if len(self.messages) > 1 and self.messages[1]["role"] == "user" else None
-
-        # Conservar los últimos (max_turns - 2) mensajes
-        recent_messages = self.messages[-(self.max_turns - 2):]
-
-        # Asegurar que el primer mensaje reciente no sea una respuesta huérfana a una tool
-        while recent_messages and recent_messages[0]["role"] == "tool":
-            recent_messages.pop(0)
-
-        new_history = [system_msg]
-        if initial_user_msg and initial_user_msg not in recent_messages:
-            new_history.append(initial_user_msg)
-        new_history.extend(recent_messages)
-
-        self.messages = new_history
+        if len(self.messages) > self.max_turns or self.estimate_tokens() > 5000:
+            self.compact_memory()
 

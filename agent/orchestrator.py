@@ -9,6 +9,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 import httpx
 
+from agent.hooks import HookManager
 from agent.memory import ConversationMemory
 from agent.prompts import SYSTEM_PROMPT
 from agent.safety import check_command_safety
@@ -45,6 +46,7 @@ class AgentOrchestrator:
                     pass
 
         self.memory = ConversationMemory(system_prompt=system_prompt)
+        self.hooks = HookManager(mode="agent")
 
         # Callbacks de UI (para Rich CLI)
         self.on_thought = on_thought
@@ -261,6 +263,15 @@ class AgentOrchestrator:
                 if self.on_tool_call:
                     self.on_tool_call(tool_name, args)
 
+                # Pre-Tool Hook (Validación de políticas y modos estilo Claude Code)
+                allowed, hook_reason = self.hooks.pre_tool_use(tool_name, args)
+                if not allowed:
+                    tool_result = f"Bloqueado por Hook Pre-Tool ({self.hooks.mode}): {hook_reason}"
+                    self.memory.add_tool_result(name=tool_name, content=tool_result)
+                    if self.on_tool_result:
+                        self.on_tool_result(tool_name, tool_result)
+                    continue
+
                 # Control de seguridad: Si es un comando de shell, evaluar peligrosidad
                 if tool_name == "run_command":
                     cmd_str = args.get("command", "")
@@ -280,6 +291,9 @@ class AgentOrchestrator:
 
                 # Ejecutar la herramienta en el sistema
                 tool_result = execute_tool(tool_name, args)
+
+                # Post-Tool Hook (Validaciones posteriores y enriquecimiento de feedback)
+                tool_result = self.hooks.post_tool_use(tool_name, args, tool_result)
 
                 # Si ocurrió un fallo o error en la herramienta, guiar al modelo para auto-sanación
                 if ("Error" in tool_result or "Código de salida: 1" in tool_result or "falló" in tool_result.lower()) and iteration < self.max_iterations:

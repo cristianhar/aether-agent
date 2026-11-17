@@ -193,6 +193,7 @@ def main():
             token_count = orchestrator.memory.estimate_tokens()
             msg_count = len(orchestrator.memory.get_messages())
             status_report = f"""[bold]Modelo:[/] {orchestrator.model}
+[bold]Modo Operativo:[/] [cyan]{orchestrator.hooks.mode.upper()}[/cyan]
 [bold]Mensajes en Contexto:[/] {msg_count} turnos (~{token_count} tokens)
 [bold]Directorio:[/] {Path.cwd()}
 
@@ -220,6 +221,25 @@ def main():
                 console.print(f"[bold green]Modelo cambiado a: {model}[/bold green]")
             else:
                 console.print(f"[bold yellow]Modelo actual: {orchestrator.model}[/bold yellow]")
+            continue
+
+        elif user_input.startswith("/mode"):
+            parts = user_input.split()
+            if len(parts) > 1:
+                target_mode = parts[1].lower().strip()
+                if target_mode in ["agent", "ask", "plan"]:
+                    orchestrator.hooks.set_mode(target_mode)
+                    mode_colors = {"agent": "green", "ask": "yellow", "plan": "cyan"}
+                    mode_desc = {
+                        "agent": "Modo AGENT: Plenos poderes de creación, edición y ejecución autónoma.",
+                        "ask": "Modo ASK (Solo Lectura): El agente solo responde dudas e inspecciona código sin modificarlo.",
+                        "plan": "Modo PLAN: Diseña el plan de arquitectura antes de tocar código."
+                    }
+                    console.print(f"[bold {mode_colors[target_mode]}]{mode_desc[target_mode]}[/bold {mode_colors[target_mode]}]")
+                else:
+                    console.print("[bold red]Modo no válido.[/bold red] Opciones: /mode agent | /mode ask | /mode plan")
+            else:
+                console.print(f"[bold yellow]Modo actual:[/] {orchestrator.hooks.mode.upper()}")
             continue
 
         elif user_input == "/voice":
@@ -252,6 +272,7 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
 - **/undo**: Revierte al último checkpoint seguro en 1 segundo.
 - **/checkpoint [mensaje]**: Guarda un punto de restauración seguro con Git.
 - **/model <nombre>**: Cambia el modelo de Ollama en caliente (ej: `/model qwen2.5-coder:7b`).
+- **/mode [agent|ask|plan]**: Cambia el modo operativo (Agent: autónomo total, Ask: solo lectura, Plan: planificación).
 - **/voice**: Guía de conexión con el Asistente de Voz Local en tiempo real.
 - **/clear**: Limpia el historial de conversación para liberar memoria de contexto.
 - **/exit**: Cierra la sesión de AETHER.

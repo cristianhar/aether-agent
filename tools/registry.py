@@ -11,6 +11,7 @@ from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, und
 from tools.repomap import generate_repo_map
 from tools.search_tools import list_directory, search_codebase, get_file_outline
 from tools.shell_tools import run_command
+from tools.subagent import delegate_task
 from tools.web_tools import search_web, fetch_web_page
 
 # Esquemas de herramientas compatibles con Ollama / OpenAI
@@ -264,6 +265,23 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_task",
+            "description": "[SUBAGENTE CLAUDE-CODE] Delega una subtarea de investigación, análisis o verificación a un subagente auxiliar con contexto de memoria limpio. No satura la memoria del agente principal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_description": {
+                        "type": "string",
+                        "description": "Instrucción clara y específica para el subagente (ej: 'Revisa qué funciones exporta core/stt.py')."
+                    }
+                },
+                "required": ["task_description"]
+            }
+        }
     }
 ]
 
@@ -277,6 +295,7 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "list_directory": list_directory,
     "get_file_outline": get_file_outline,
     "get_repo_map": generate_repo_map,
+    "delegate_task": delegate_task,
     "search_web": search_web,
     "fetch_web_page": fetch_web_page,
     "create_checkpoint": create_checkpoint,

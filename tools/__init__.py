@@ -8,6 +8,7 @@ from tools.registry import TOOLS_SCHEMA, execute_tool
 from tools.repomap import generate_repo_map
 from tools.search_tools import list_directory, search_codebase, get_file_outline
 from tools.shell_tools import run_command
+from tools.subagent import delegate_task
 from tools.web_tools import search_web, fetch_web_page
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "list_directory",
     "get_file_outline",
     "generate_repo_map",
+    "delegate_task",
     "search_web",
     "fetch_web_page",
     "create_checkpoint",
