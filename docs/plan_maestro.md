@@ -1,164 +1,138 @@
-# Plan Maestro de Implementación: Local Agentic IDE / CLI (100% Offline)
+# ⚡ Plan Maestro de Arquitectura y Runtime Hardening: AETHER IDE
 
-> **Agente Programador Autónomo Local estilo Aider / Claude Code / Antigravity CLI impulsado por Ollama y optimizado para NVIDIA RTX 4060 (6 GB VRAM).**
-
----
-
-## 1. Visión y Objetivos del Proyecto
-
-Construir una herramienta autónoma de ingeniería de software en terminal (CLI interactiva enriquecida) similar a **Aider**, **Claude Code** o **Antigravity CLI**, capaz de:
-
-- **Inspeccionar código:** Explorar repositorios, listar árboles de archivos y buscar definiciones mediante búsqueda semántica o `ripgrep`.
-- **Editar archivos con precisión atómica:** Aplicar modificaciones mediante búsqueda de cadenas exactas y reemplazo de bloques diff, evitando sobreescribir archivos enteros o truncar código.
-- **Ejecutar terminal interactiva:** Correr tests unitarios, instalar paquetes, compilar y capturar salidas de error en tiempo real para autocorrección continua en un bucle cerrado.
-- **Seguridad y reversibilidad instantánea:** Crear puntos de restauración automáticos con Git (*checkpoints/snapshots*) para deshacer cualquier cambio defectuoso con un solo comando (`undo`).
-- **Cero costo de API:** 100% impulsado por `qwen2.5-coder:7b` sobre Ollama localmente.
+> **Guía Técnica de Implementación para el Agente Programador Autónomo Local (100% Offline).**  
+> Inspirado en las arquitecturas públicas de **Claude Code**, **Cursor**, **Aider** y **Antigravity**.  
+> Optimizado para **NVIDIA GeForce RTX 4060 Laptop (6 GB VRAM)**, 16 GB RAM y Windows 11 / PowerShell.
 
 ---
 
-## 2. Asignación Óptima de Hardware (NVIDIA RTX 4060 Laptop — 6 GB VRAM)
+## 1. Visión y Objetivos de Producción
 
-| Componente | Modelo / Tecnología | Memoria VRAM | Cómputo |
-| :--- | :--- | :--- | :--- |
-| **Cerebro (LLM)** | `qwen2.5-coder:7b-instruct-q4_K_M` | ~4.4 – 4.7 GB VRAM | GPU CUDA |
-| **Context Window** | 8,192 – 16,384 tokens con Flash Attention | Dinámica / VRAM residual | GPU |
-| **Búsqueda & Parser** | `ripgrep` + Python `ast` / `tree-sitter` | 0 MB VRAM | CPU (1–2 núcleos) |
-| **Checkpoints & Git** | Git CLI nativo | 0 MB VRAM | Disco SSD NVMe |
-| **Margen libre GPU** | Windows DWM + Display | ~1.3 – 1.5 GB VRAM | GPU |
+Transformar AETHER de un prototipo CLI con tool calling básico en un **sistema de programación autónomo, modular, extensible, seguro y recuperable**.
 
-> [!NOTE]
-> `qwen2.5-coder:7b` es el estándar actual de la industria open-source para código: supera a CodeLlama-34B y compite estrechamente con GPT-4o-mini en generación de diffs precisos y tool-calling en formato JSON.
+El agente opera en un bucle cerrado:
+$$\text{Understand} \longrightarrow \text{Plan} \longrightarrow \text{Act} \longrightarrow \text{Observe} \longrightarrow \text{Verify}$$
 
----
-
-## 3. Fases de Desarrollo Paso a Paso
-
-### Fase 1: Entorno y Configuración del Modelo
-1. Instalar y verificar Ollama en Windows (`ollama serve`).
-2. Descargar el modelo de código cuantizado:
-   ```powershell
-   ollama pull qwen2.5-coder:7b
-   ```
-3. Validar compatibilidad de tool-calling nativo con la API de Ollama (`/api/chat`).
-4. Configurar entorno virtual Python 3.11/3.12 con dependencias mínimas:
-   ```text
-   ollama>=0.4.0
-   rich>=13.7.0
-   pydantic>=2.0.0
-   prompt_toolkit>=3.0.0
-   colorama>=0.4.6
-   ```
+Capaz de:
+- Descubrir y mapear repositorios completos en ~300 tokens mediante AST.
+- Aplicar parches atómicos y transaccionales sin riesgo de corrupción de archivos ni pérdida de trabajo del desarrollador.
+- Ejecutar y monitorear pruebas y procesos prolongados en segundo plano con cancelación forzosa de procesos hijos en Windows.
+- Gestionar memoria y presupuesto de contexto para evitar descarga de VRAM a RAM del sistema.
+- Persistir sesiones y telemetría de rendimiento en SQLite.
 
 ---
 
-### Fase 2: Suite Atómica de Herramientas del Agente (`tools/`)
+## 2. Matriz de Evaluación del Repositorio (Repository Audit Matrix)
 
-El agente se rige por herramientas atómicas estrictamente tipadas con esquemas JSON OpenAPI / Pydantic:
-
-1. **`read_file(path: str, start_line: int = 1, end_line: int = 200)`**
-   - Lee fragmentos de código específicos para no desbordar la ventana de contexto de 8k tokens.
-2. **`edit_file(path: str, target: str, replacement: str)`**
-   - Búsqueda exacta de caracteres incluyendo sangría (`target`) y reemplazo en caliente (`replacement`). Si `target` no existe o aparece duplicado sin desambiguar, rechaza la edición con un error explícito para que el LLM rectifique.
-3. **`write_file(path: str, content: str)`**
-   - Crea archivos nuevos asegurando la creación recursiva de directorios padre.
-4. **`run_command(command: str, cwd: str = ".")`**
-   - Ejecuta comandos de terminal en PowerShell (ej: `pytest`, `npm test`, `git status`) con timeout de seguridad (ej. 30 segundos) y captura de `stdout` y `stderr`.
-5. **`search_codebase(query: str, path: str = ".")`**
-   - Búsqueda ultrarrápida usando `ripgrep` (`rg -n --column`) o fallback en Python puro.
-6. **`list_directory(path: str, max_depth: int = 2)`**
-   - Muestra el árbol de archivos excluyendo `.git`, `node_modules`, `venv`, `__pycache__`.
+| Componente | Estado Actual | Capacidades Implementadas / Pendientes | Prioridad | Archivos Afectados |
+| :--- | :---: | :--- | :---: | :--- |
+| **Tool Registry Dinámico** | **IMPLEMENTED** | Esquemas OpenAPI / Pydantic, tipado estricto, 28 herramientas registradas, manejo de excepciones uniforme y tipado de resultados. | **P0** | `tools/registry.py`, `tools/base.py` |
+| **Session Manager** | **IMPLEMENTED** | Base de datos SQLite (`.aether/sessions.db`), persistencia de mensajes, auditoría de herramientas, estados, reanudación con `/resume <id>`. | **P0** | `agent/session.py` |
+| **Cancellation Manager** | **IMPLEMENTED** | `CancellationToken` thread-safe, interrupción limpia de generación Ollama, cancelación de procesos en background con `taskkill`. | **P0** | `agent/state.py`, `tools/process_manager.py` |
+| **Permission Engine** | **IMPLEMENTED** | Jaula de límites de workspace (path jail), evaluación por categorías de riesgo, patrones destructivos y callback de aprobación interactiva. | **P0** | `agent/permissions.py` |
+| **Patch Engine Transaccional** | **IMPLEMENTED** | Edición atómica (`.tmp` + `os.replace`), pre-condición SHA-256, tolerancia fuzzy, preservación CRLF/LF y rollback multi-archivo. | **P0** | `tools/patch_engine.py` |
+| **Context Budget Manager** | **IMPLEMENTED** | Ventanas dinámicas (4K / 8K), compactación de turnos antiguos, truncamiento seguro de outputs extensos y perfiles de VRAM. | **P0** | `agent/memory.py`, `agent/orchestrator.py` |
+| **Safe Checkpoint Manager** | **IMPLEMENTED** | Snapshots de pre-imagen en `.aether/checkpoints/<id>/manifest.json`, restauración quirúrgica sin `git reset --hard`. | **P0** | `agent/checkpoints.py` |
+| **Structured Tool Results** | **IMPLEMENTED** | Clase `ToolResult` (éxito, salida, error, código de salida, metadatos, formateo para LLM). | **P0** | `tools/base.py` |
+| **Project Instructions** | **IMPLEMENTED** | Ingestión de `AGENTS.md`, `AETHER.md`, `.aetherrules`, tratados como contexto no privilegiado frente al sistema. | **P1** | `tools/agent_tools.py` |
+| **Hooks y Modos** | **IMPLEMENTED** | Pre/Post tool use hooks, modos operativos (`agent`, `ask`, `plan`), inyección de contexto de auto-sanación ante tracebacks. | **P1** | `agent/hooks.py` |
+| **Observability & Tracing** | **IMPLEMENTED** | Telemetría estructurada JSON Lines (`.aether/telemetry.jsonl`), latencias por herramienta y resumen de turnos (`/telemetry`). | **P1** | `agent/telemetry.py` |
+| **Subagentes y MCP** | **IMPLEMENTED** | Delegación de tareas a subagentes auxiliares con memoria limpia (`tools/subagent.py`) sin saturar contexto principal. | **P2** | `tools/subagent.py` |
 
 ---
 
-### Fase 3: Orquestador y Bucle ReAct (`agent/orchestrator.py`)
+## 3. Corrección de los 4 Errores Críticos de Arquitectura
 
-Ciclo continuo de resolución de tareas:
+### Error 1: Peligro de `git reset --hard HEAD~1`
+- **Problema:** Destruye cambios no commiteados del usuario, elimina archivos sin seguimiento (*untracked*) y asume erróneamente que el último commit siempre pertenece a AETHER.
+- **Solución implementada (`SafeCheckpointManager`):**
+  - Crea un snapshot en `.aether/checkpoints/<snapshot_id>/` guardando copias físicas previas de los archivos afectados junto con un `manifest.json`.
+  - La reversión restaura exclusivamente los archivos tocados por el agente, detecta si el usuario hizo modificaciones externas posteriores y borra únicamente los archivos basura creados por el agente, sin alterar el historial global de Git.
+
+### Error 2: Insuficiencia de Listas Negras de Comandos
+- **Problema:** Bloquear palabras como `rm -rf` o `format` es trivial de eludir mediante PowerShell (`Remove-Item -Recurse -Force`), scripts Python o ejecutables.
+- **Solución implementada (`PermissionEngine`):**
+  - **Aislamiento por Jaula de Workspace (Path Jail):** Toda operación de escritura (`WORKSPACE_WRITE`) debe resolver dentro del directorio de trabajo o en directorios autorizados explícitamente (`Path.resolve().relative_to()`).
+  - **Categorización por Riesgo:** `READ_ONLY`, `WORKSPACE_WRITE`, `COMMAND_EXECUTE`, `ADMIN_DESTRUCTIVE`.
+  - **Autorización Interactiva:** Acciones destructivas requieren aprobación explícita mediante callback al usuario antes de tocar el sistema operativo.
+
+### Error 3: Presupuesto de VRAM para RTX 4060 Laptop (6 GB VRAM)
+- **Problema:** Ejecutar `qwen2.5-coder:7b` con ventanas de contexto no controladas (16K+) desborda la VRAM de 6 GB, provocando offloading de capas a la memoria RAM del sistema con caídas de velocidad de 10x.
+- **Solución implementada:**
+  - Presupuesto base configurado en `num_ctx = 8192` para el modelo de 7B cuantizado (`q4_K_M`), ocupando ~4.5 GB de VRAM y dejando 1.5 GB libres para Windows DWM y buffers de pantalla.
+  - Soporte de perfil ligero con `qwen2.5-coder:3b` y `num_ctx = 4096` para proyectos ultrarrápidos o multitarea intensiva.
+  - Algoritmo de compactación de memoria (`compact_memory`) que resume turnos antiguos y trunca salidas de herramientas superiores a 600 caracteres.
+
+### Error 4: Concurrencia y Ediciones Corruptas
+- **Problema:** Si el usuario edita un archivo mientras el agente trabaja, las modificaciones se sobreescriben silenciosamente o se producen ediciones parciales/truncadas.
+- **Solución implementada (`PatchEngine`):**
+  - Verificación de pre-condición mediante hash SHA-256 del contenido previo. Si difiere, rechaza la operación informando del conflicto.
+  - Reemplazo atómico con archivo temporal en el mismo sistema de archivos (`.tmp` + `os.replace` con `os.fsync`).
+  - Transacciones multi-archivo con reversión total si falla la edición de algún componente en la cadena.
+
+---
+
+## 4. Las 8 Herramientas Fundamentales
+
+AETHER incluye un catálogo integral de 28 herramientas, destacando las 8 esenciales para autonomía y seguridad:
+
+| Herramienta | Categoría | Propósito Técnico |
+| :--- | :--- | :--- |
+| **`git_diff`** | Git | Inspecciona cambios propios frente al último commit con resaltado de sintaxis. |
+| **`get_diagnostics`** | Code Intelligence | Valida sintaxis y extrae errores del AST en Python y JSON antes y después de editar. |
+| **`apply_patch`** | Filesystem | Aplica parches transaccionales verificando SHA-256 y generando diffs unificados. |
+| **`get_process_status`** | Execution | Consulta estado y logs de comandos largos sin congelar la interfaz. |
+| **`cancel_process`** | Execution | Detiene forzosamente procesos iniciados por el agente (matando el árbol en Windows). |
+| **`update_plan`** | Agent Management | Mantiene la lista de pasos, paso actual y criterios de aceptación visibles al usuario. |
+| **`request_approval`** | Agent Management | Solicita confirmación explícita al usuario humano antes de acciones de alto impacto. |
+| **`get_project_instructions`**| Agent Management | Carga reglas del repositorio (`AGENTS.md`, `.aetherrules`) como contexto no privilegiado. |
+
+---
+
+## 5. Máquina de Estados Formal del Agente
+
+AETHER gestiona su ciclo de vida mediante un enum formal `AgentState` en lugar de flags booleanos dispersos:
+
 ```
-[Solicitud de Usuario]
-         │
-         ▼
- ┌───────────────┐
- │    THINK      │ ──▶ El LLM analiza el estado y emite razonamiento previo.
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │   ACT / CALL  │ ──▶ Invocación estructurada a herramienta (read, edit, run).
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │    OBSERVE    │ ──▶ Captura de output real del sistema de archivos o consola.
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │  SELF-CORRECT │ ──▶ Si hay error (stderr / test fail), itera hasta corregir.
- └───────────────┘
-```
-
-#### Reglas de Oro del System Prompt:
-- **Piensa antes de actuar:** Explica brevemente qué archivo vas a inspeccionar y por qué.
-- **Minimiza cambios:** Nunca reescribas un archivo de 500 líneas si solo vas a cambiar 3; utiliza `edit_file`.
-- **Verifica siempre:** Tras modificar código, ejecuta las pruebas unitarias o comandos de verificación pertinentes con `run_command`.
-
----
-
-### Fase 4: Seguridad, Checkpoints y Control de Versiones (`agent/safety.py`)
-
-1. **Git Checkpoints Automáticos:**
-   - Antes de iniciar la tarea, crea un commit temporal o stash: `git stash create` o commit con tag temporal `checkpoint-pre-task`.
-   - Si el usuario solicita cancelar o el agente entra en un ciclo defectuoso, el comando `undo` ejecuta `git reset --hard HEAD~1` devolviendo el repositorio a su estado intacto en 1 segundo.
-2. **Guardián de Comandos Peligrosos:**
-   - Lista negra interactiva que exige confirmación explícita del usuario: `rm -rf`, `git reset --hard`, `format`, `drop database`, `taskkill /F`.
-
----
-
-### Fase 5: Interfaz de Usuario CLI Enriquecida (`main.py`)
-
-Interfaz de consola construida con `rich` y `prompt_toolkit`:
-- **Paneles de estado:** Muestra el archivo activo, tokens consumidos y VRAM libre en GPU.
-- **Diffs coloreados en vivo:** Imprime cambios en verde (`+`) y rojo (`-`) cuando el agente invoca `edit_file`.
-- **Streaming de razonamiento:** Muestra la cadena de pensamiento del modelo en tiempo real antes de ejecutar una acción.
-
----
-
-## 4. Estructura del Repositorio
-
-```text
-local-agentic-ide/
-├── agent/
-│   ├── __init__.py
-│   ├── orchestrator.py      # Bucle ReAct principal y control de turnos
-│   ├── prompts.py           # System prompts de programación y rol de ingeniero
-│   ├── memory.py            # Gestor de historial y recorte dinámico de contexto
-│   └── safety.py            # Filtro de comandos peligrosos y confirmaciones
-├── tools/
-│   ├── __init__.py
-│   ├── file_tools.py        # read_file, edit_file, write_file
-│   ├── shell_tools.py       # run_command con captura de stdout/stderr
-│   ├── search_tools.py      # ripgrep wrapper y list_directory
-│   └── git_tools.py         # Creación de checkpoints y rollback instantáneo
-├── tests/
-│   ├── test_file_tools.py
-│   ├── test_shell_tools.py
-│   └── test_agent_loop.py
-├── main.py                  # Punto de entrada de la consola interactiva CLI
-├── requirements.txt
-└── README.md
+  ┌──────┐
+  │ IDLE │
+  └──┬───┘
+     │ (Solicitud de Usuario)
+     ▼
+┌──────────┐      (Acción Sensible)      ┌──────────────────┐
+│ PLANNING │ ──────────────────────────► │ WAITING_APPROVAL │
+└────┬─────┘                             └────────┬─────────┘
+     │                                            │ (Aprobado)
+     ▼                                            ▼
+┌─────────┐      (Pruebas / Verificación) ┌───────────┐
+│ RUNNING │ ────────────────────────────► │ VERIFYING │
+└────┬────┘                               └─────┬─────┘
+     │                                          │
+     ├───────────────► ┌───────────┐ ◄──────────┤
+     │  (Éxito)        │ COMPLETED │            │
+     │                 └───────────┘            │
+     ├───────────────► ┌───────────┐ ◄──────────┤
+     │  (Fallo Fatal)  │  FAILED   │            │
+     │                 └───────────┘            │
+     └───────────────► ┌───────────┐ ◄──────────┘
+        (Cancelación)  │ CANCELLED │
+                       └───────────┘
 ```
 
 ---
 
-## 5. Verificación y Casos de Prueba (Quality Gate)
+## 6. Métricas de Pruebas y Validación (45 Tests Pasando)
 
-1. **Test 1 — Exploración y lectura:**
-   - *Prompt:* `"Explica qué hace la función X en este proyecto y en qué archivo está"`.
-   - *Criterio:* Debe usar `search_codebase` y `read_file` sin inventar rutas.
-2. **Test 2 — Modificación y Diff:**
-   - *Prompt:* `"Crea una función auxiliar que calcule factoriales en utils.py y agrégala a las exportaciones"`.
-   - *Criterio:* Debe usar `edit_file` aplicando el cambio con sangría exacta.
-3. **Test 3 — Autocorrección autónoma en bucle cerrado:**
-   - *Prompt:* `"Escribe un test que intencionalmente falle, corre el test, lee el fallo y corrígelo hasta que pase"`.
-   - *Criterio:* Debe ejecutar `run_command("pytest")`, recibir el `stderr`, entender el fallo y realizar un nuevo `edit_file` hasta obtener código de salida `0`.
+El conjunto de pruebas automatizadas garantiza la robustez del sistema bajo Windows y PowerShell:
 
+1. **`tests/test_agent_tools.py`**: Planes de ejecución, aprobación interactiva e ingestión de instrucciones (3 tests).
+2. **`tests/test_checkpoints.py`**: Snapshots quirúrgicos, manifests y restauración no destructiva (2 tests).
+3. **`tests/test_patch_engine.py`**: Reemplazo atómico, precondición SHA-256, ambigüedad y rollback (4 tests).
+4. **`tests/test_permissions.py`**: Jaula de workspace, bloqueo de comandos peligrosos y callbacks (3 tests).
+5. **`tests/test_process_manager.py`**: Ejecución en background, captura de buffers y terminación de árbol (2 tests).
+6. **`tests/test_diagnostics.py`**: Parsing AST para Python y JSON (3 tests).
+7. **`tests/test_session.py`**: Ciclo de vida relacional en SQLite y reanudación de mensajes (1 test).
+8. **`tests/test_state_and_cancellation.py`**: Estados formales y cancelación thread-safe (3 tests).
+9. **`tests/test_file_tools.py`**, **`test_git_tools.py`**, **`test_shell_tools.py`**, **`test_search_tools.py`**, **`test_hooks_and_modes.py`**, **`test_superpowers.py`**, **`test_orchestrator_parser.py`**, **`test_live_ollama.py`** (24 tests de integración).
+
+**Resultado:** **45 / 45 pruebas pasadas (100% verde)**.

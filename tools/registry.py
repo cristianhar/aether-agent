@@ -16,6 +16,7 @@ from tools.web_tools import search_web, fetch_web_page
 from tools.diagnostics import get_diagnostics
 from tools.patch_engine import PatchEngine
 from tools.process_manager import ProcessManager
+from tools.agent_tools import update_plan, request_approval, get_project_instructions
 
 # Esquemas de herramientas compatibles con Ollama / OpenAI
 TOOLS_SCHEMA: List[Dict[str, Any]] = [
@@ -472,6 +473,71 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_plan",
+            "description": "Actualiza la lista de pasos, el paso actual en progreso y los criterios de aceptación para resolver la tarea.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Lista secuencial de pasos a realizar."
+                    },
+                    "current_step": {
+                        "type": "integer",
+                        "description": "Índice (1-based) del paso actual en ejecución."
+                    },
+                    "acceptance_criteria": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Criterios observables que definirán que la tarea está completa."
+                    }
+                },
+                "required": ["plan_steps"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_approval",
+            "description": "Solicita autorización explícita al desarrollador antes de realizar una acción de alto impacto o destructiva.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action_description": {
+                        "type": "string",
+                        "description": "Descripción clara de la acción que se desea ejecutar y por qué."
+                    },
+                    "risk_level": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "critical"],
+                        "description": "Nivel de riesgo estimado."
+                    }
+                },
+                "required": ["action_description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_project_instructions",
+            "description": "Carga las instrucciones, guías de estilo y convenciones del repositorio (AGENTS.md, AETHER.md, .aetherrules).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta opcional del directorio raíz del proyecto (por defecto '.')."
+                    }
+                }
+            }
+        }
     }
 ]
 
@@ -565,6 +631,9 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "cancel_process": cancel_process_tool,
     "safe_checkpoint": safe_checkpoint_tool,
     "safe_undo_checkpoint": safe_undo_checkpoint_tool,
+    "update_plan": update_plan,
+    "request_approval": request_approval,
+    "get_project_instructions": get_project_instructions,
 }
 
 
