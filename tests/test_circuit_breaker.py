@@ -25,7 +25,7 @@ def test_circuit_breaker_blocks_repeated_failing_command():
         last_failed_command=last_failed,
         files_modified_since_cmd_fail=files_modified,
         known_syntax_error_files=set(),
-        consecutive_tool_counts={},
+        last_failed_tool_key=None,
     )
     assert tripped is True
     assert "CIRCUIT BREAKER" in msg
@@ -46,7 +46,7 @@ def test_circuit_breaker_allows_command_after_file_modification():
         last_failed_command=last_failed,
         files_modified_since_cmd_fail=files_modified,
         known_syntax_error_files=set(),
-        consecutive_tool_counts={},
+        last_failed_tool_key=None,
     )
     assert tripped is False
 
@@ -61,7 +61,7 @@ def test_circuit_breaker_blocks_script_with_unresolved_syntax_error():
         last_failed_command=None,
         files_modified_since_cmd_fail=False,
         known_syntax_error_files={"minijuego.py"},
-        consecutive_tool_counts={},
+        last_failed_tool_key=None,
     )
     assert tripped is True
     assert "SyntaxError pendiente de corrección" in msg
@@ -69,11 +69,10 @@ def test_circuit_breaker_blocks_script_with_unresolved_syntax_error():
 
 
 def test_circuit_breaker_blocks_consecutive_identical_failed_tool():
-    """Bloquea cualquier herramienta que repita exactamente los mismos argumentos tras haber fallado."""
+    """Bloquea cualquier herramienta que repita inmediatamente los mismos argumentos tras haber fallado."""
     orch = AgentOrchestrator()
 
     key = 'read_file:{"end_line": 200, "path": "inexistente.py", "start_line": 1}'
-    consecutive_counts = {key: 1}
 
     tripped, msg = orch._check_circuit_breaker(
         tool_name="read_file",
@@ -81,11 +80,24 @@ def test_circuit_breaker_blocks_consecutive_identical_failed_tool():
         last_failed_command=None,
         files_modified_since_cmd_fail=False,
         known_syntax_error_files=set(),
-        consecutive_tool_counts=consecutive_counts,
+        last_failed_tool_key=key,
     )
     assert tripped is True
     assert "CIRCUIT BREAKER" in msg
     assert "repetir la misma acción fallida" in msg
+
+
+def test_edit_file_rejects_traceback_as_target():
+    """edit_file debe rechazar si el modelo pasa un mensaje de error/traceback en vez de código."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_file = Path(tmp_dir) / "game.py"
+        test_file.write_text("print('hola')\n", encoding="utf-8")
+
+        traceback_target = "Traceback (most recent call last):\n  File 'game.py', line 1\nEOFError: EOF when reading a line"
+        res = edit_file(str(test_file), target=traceback_target, replacement="pass")
+        assert "Error de parámetro 'target'" in res
+        assert "Has pasado la salida o mensaje de error de la terminal" in res
+        assert "read_file" in res
 
 
 def test_shell_diagnostics_detects_subproject_package_json():

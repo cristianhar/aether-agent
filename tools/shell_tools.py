@@ -40,6 +40,14 @@ def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, st
             "Está PROHIBIDO volver a ejecutar 'run_command' con este script sin antes corregir la sintaxis usando 'edit_file'."
         )
 
+    # 3. Detección de EOFError en scripts interactivos (input())
+    if "eoferror" in combined or "eof when reading a line" in combined:
+        hints.append(
+            "💡 [DIAGNÓSTICO DE ENTRADA INTERACTIVA]: El comando falló por EOFError porque el script ejecutó input() en una terminal no interactiva.\n"
+            "• Para testear scripts con input(), valida su sintaxis con 'python -m py_compile <archivo>.py' o 'python -c \"import <modulo>\"'.\n"
+            "• NUNCA intentes editar el archivo buscando 'EOFError'; este texto proviene de la consola, no del archivo."
+        )
+
     # 3. Detección de archivo Python inexistente en CWD pero existente en subcarpeta
     if ("can't open file" in combined or "no such file" in combined) and "python" in command.lower():
         try:

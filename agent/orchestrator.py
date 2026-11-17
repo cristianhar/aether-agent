@@ -203,14 +203,14 @@ class AgentOrchestrator:
         last_failed_command: Optional[str],
         files_modified_since_cmd_fail: bool,
         known_syntax_error_files: set,
-        consecutive_tool_counts: Dict[str, int],
+        last_failed_tool_key: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle:
         Previene bucles repetitivos donde el modelo:
         1. Repite el mismo comando de consola que ya falló sin haber modificado ningún archivo.
         2. Intenta ejecutar un script que contiene un SyntaxError detectado sin haberlo editado.
-        3. Llama repetidamente a la misma herramienta con argumentos idénticos tras un fallo previo.
+        3. Llama repetidamente a la misma herramienta con argumentos idénticos inmediatamente después de haber fallado.
         """
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
@@ -238,10 +238,10 @@ class AgentOrchestrator:
                         )
                         return True, msg
 
-        # Regla 3: Herramienta idéntica consecutiva tras un fallo previo
-        if consecutive_tool_counts.get(tool_call_key, 0) >= 1:
+        # Regla 3: Herramienta idéntica inmediatamente consecutiva tras un fallo previo
+        if last_failed_tool_key and last_failed_tool_key == tool_call_key:
             msg = (
-                f"⛔ [CIRCUIT BREAKER]: La herramienta '{tool_name}' con estos mismos argumentos ya fue ejecutada y falló.\n"
+                f"⛔ [CIRCUIT BREAKER]: La herramienta '{tool_name}' con estos mismos argumentos ya fue ejecutada inmediatamente antes y falló.\n"
                 "Está PROHIBIDO repetir la misma acción fallida consecutivamente sin cambiar los parámetros.\n"
                 "Cambia tus argumentos o utiliza una herramienta diferente (ej: edit_file, read_file o search_codebase)."
             )
@@ -269,7 +269,7 @@ class AgentOrchestrator:
         # Variables de control del Circuit Breaker Anti-Bucle
         last_failed_command: Optional[str] = None
         files_modified_since_cmd_fail: bool = False
-        consecutive_tool_counts: Dict[str, int] = {}
+        last_failed_tool_key: Optional[str] = None
         known_syntax_error_files: set = set()
 
         for iteration in range(1, self.max_iterations + 1):
@@ -435,10 +435,11 @@ class AgentOrchestrator:
                     last_failed_command=last_failed_command,
                     files_modified_since_cmd_fail=files_modified_since_cmd_fail,
                     known_syntax_error_files=known_syntax_error_files,
-                    consecutive_tool_counts=consecutive_tool_counts,
+                    last_failed_tool_key=last_failed_tool_key,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
+                    last_failed_tool_key = tool_call_key
                     self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
                     continue
 
@@ -470,16 +471,19 @@ class AgentOrchestrator:
                     if is_success and not has_syntax_err:
                         files_modified_since_cmd_fail = True
                         last_failed_command = None
+                        last_failed_tool_key = None  # ¡Se modificó un archivo con éxito! Limpiar fallo previo para permitir re-probar
                         if target_path:
                             known_syntax_error_files.discard(target_path)
                             known_syntax_error_files.discard(Path(target_path).name)
                     elif has_syntax_err and target_path:
                         known_syntax_error_files.add(target_path)
                         known_syntax_error_files.add(Path(target_path).name)
+                        last_failed_tool_key = tool_call_key
 
                 elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:
                     files_modified_since_cmd_fail = True
                     last_failed_command = None
+                    last_failed_tool_key = None
                     known_syntax_error_files.clear()
 
                 elif tool_name == "run_command":
@@ -487,6 +491,7 @@ class AgentOrchestrator:
                     if not is_success:
                         last_failed_command = cmd_norm
                         files_modified_since_cmd_fail = False
+                        last_failed_tool_key = tool_call_key
                         if "syntaxerror" in tool_result.lower():
                             for part in args.get("command", "").split():
                                 if part.endswith(".py"):
@@ -494,14 +499,15 @@ class AgentOrchestrator:
                                     known_syntax_error_files.add(Path(part).name)
                     else:
                         last_failed_command = None
+                        last_failed_tool_key = None
 
                 if not is_success:
-                    consecutive_tool_counts[tool_call_key] = consecutive_tool_counts.get(tool_call_key, 0) + 1
+                    last_failed_tool_key = tool_call_key
                     total_tool_failures += 1
                     if iteration < self.max_iterations:
                         tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
                 else:
-                    consecutive_tool_counts.pop(tool_call_key, None)
+                    last_failed_tool_key = None
 
                 self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
 

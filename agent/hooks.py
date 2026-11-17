@@ -46,6 +46,10 @@ class HookManager:
         # Si la salida de run_command indica fallo, inyectar alerta de auto-sanación
         if tool_name == "run_command" and ("Código de salida: 1" in result or "Traceback" in result):
             if "EOFError" in result:
-                result += "\n[HOOK POST-TOOL]: El comando falló por EOFError (esperaba teclado). Recuerda no ejecutar bucles interactivos input() directamente."
+                result += (
+                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO]: El comando falló con EOFError porque el script ejecutó input() en una terminal no interactiva.\n"
+                    "• Para verificar scripts que esperan teclado, ejecuta: run_command(command='python -m py_compile <archivo>.py') o 'python -c \"import <modulo>\"'.\n"
+                    "• NUNCA busques 'EOFError' dentro del archivo con edit_file; EOFError es un mensaje de la consola, no código fuente."
+                )
 
         return result

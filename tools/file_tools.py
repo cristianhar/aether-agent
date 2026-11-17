@@ -163,6 +163,27 @@ def edit_file(path: str, target: str, replacement: str) -> str:
             target_normalized, note = fuzzy_match
             count = 1
         else:
+            error_signatures = [
+                "Traceback (most recent call last)",
+                "EOFError",
+                "SyntaxError",
+                "NameError",
+                "TypeError",
+                "ValueError",
+                "[HOOK POST-TOOL]",
+                "[SISTEMA AETHER]",
+                "Código de salida:",
+                "--- STDERR ---",
+                "--- STDOUT ---",
+            ]
+            if any(sig in target for sig in error_signatures):
+                preview = target.strip().replace("\n", " ")[:60]
+                return (
+                    f"Error de parámetro 'target': Has pasado la salida o mensaje de error de la terminal ('{preview}...') como 'target'. "
+                    f"El parámetro 'target' debe ser el CÓDIGO FUENTE REAL que existe físicamente dentro del archivo '{path}', "
+                    "NUNCA un mensaje de error de la consola. "
+                    f"Usa primero 'read_file(path=\"{path}\")' para ver las líneas de código exactas que deseas modificar."
+                )
             return (
                 f"Error: No se encontró el texto 'target' en '{path}'. "
                 "Asegúrate de incluir la indentación exacta y suficientes líneas circundantes para que sea unívoco."
