@@ -20,3 +20,4 @@ def test_list_directory_and_search(tmp_path):
     search_res = search_codebase("authenticate_user", str(tmp_path))
     assert "service.py" in search_res
     assert "authenticate_user" in search_res
+

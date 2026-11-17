@@ -81,11 +81,17 @@ def main():
     ollama_ok = orchestrator.check_ollama_alive()
     render_banner(model, ollama_ok)
 
-    session = PromptSession(history=InMemoryHistory())
+    try:
+        session = PromptSession(history=InMemoryHistory())
+    except Exception:
+        session = None
 
     while True:
         try:
-            user_input = session.prompt("\nAETHER ❯ ").strip()
+            if session:
+                user_input = session.prompt("\nAETHER ❯ ").strip()
+            else:
+                user_input = input("\nAETHER ❯ ").strip()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
             break
@@ -163,3 +169,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

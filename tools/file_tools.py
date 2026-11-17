@@ -51,24 +51,84 @@ def read_file(path: str, start_line: int = 1, end_line: int = 200) -> str:
     return "\n".join(output)
 
 
+def check_syntax(file_path: Path, new_content: str) -> Optional[str]:
+    """
+    Superpoder: Auto-Linter sintáctico instantáneo.
+    Detecta SyntaxErrors en archivos Python y JSON al instante de ser modificados.
+    """
+    if file_path.suffix == ".py":
+        try:
+            import ast
+            ast.parse(new_content, filename=str(file_path))
+        except SyntaxError as se:
+            snippet = se.text.strip() if se.text else ""
+            return f"⚠️ [Auto-Linter] Error de sintaxis en línea {se.lineno}: {se.msg} -> '{snippet}'"
+    elif file_path.suffix == ".json":
+        try:
+            import json
+            json.loads(new_content)
+        except Exception as je:
+            return f"⚠️ [Auto-Linter] JSON inválido: {je}"
+    return None
+
+
+def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
+    """
+    Superpoder: Fuzzy Matcher inteligente.
+    Si la búsqueda exacta falla, busca el bloque tolerando variaciones menores
+    de espacios en blanco al final de línea o diferencias leves de sangría.
+    Retorna (bloque_original_encontrado, nota) si la coincidencia es única.
+    """
+    content_lines = content.split("\n")
+    target_lines = [l.rstrip() for l in target.split("\n")]
+    if not target_lines:
+        return None
+
+    m = len(target_lines)
+    matches = []
+
+    for i in range(len(content_lines) - m + 1):
+        window = content_lines[i : i + m]
+        window_stripped = [l.rstrip() for l in window]
+        
+        # Comparación 1: Tolerancia a espacios finales
+        if window_stripped == target_lines:
+            matches.append("\n".join(window))
+            continue
+
+        # Comparación 2: Tolerancia a sangría proporcional
+        if [l.strip() for l in window] == [l.strip() for l in target_lines]:
+            matches.append("\n".join(window))
+
+    if len(matches) == 1:
+        return matches[0], " (aplicado mediante coincidencia inteligente de espacios)"
+    return None
+
+
 def write_file(path: str, content: str) -> str:
     """
-    Crea o sobrescribe un archivo asegurando la creación recursiva de directorios padre.
+    Crea o sobrescribe un archivo asegurando la creación recursiva de directorios padre
+    e incorpora validación sintáctica automática (Auto-Linter).
     """
     file_path = get_absolute_path(path)
     try:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"Éxito: Archivo '{path}' guardado correctamente ({len(content)} caracteres)."
+        
+        syntax_warn = check_syntax(file_path, content)
+        msg = f"Éxito: Archivo '{path}' guardado correctamente ({len(content)} caracteres)."
+        if syntax_warn:
+            msg += f" {syntax_warn}. Por favor corrígelo con otro comando."
+        return msg
     except Exception as e:
         return f"Error al escribir en '{path}': {str(e)}"
 
 
 def edit_file(path: str, target: str, replacement: str) -> str:
     """
-    Reemplaza exactamente el bloque 'target' por 'replacement' dentro del archivo.
-    Requiere coincidencia exacta de caracteres e indentación.
+    Reemplaza el bloque 'target' por 'replacement' dentro del archivo.
+    Incluye fallback con Fuzzy Matching inteligente y Auto-Linter sintáctico.
     """
     file_path = get_absolute_path(path)
     if not file_path.exists():
@@ -82,18 +142,23 @@ def edit_file(path: str, target: str, replacement: str) -> str:
     except Exception as e:
         return f"Error al leer el archivo '{path}': {str(e)}"
 
-    # Normalizar retornos de carro para evitar discrepancias CRLF vs LF
     content_normalized = content.replace("\r\n", "\n")
     target_normalized = target.replace("\r\n", "\n")
     replacement_normalized = replacement.replace("\r\n", "\n")
 
     count = content_normalized.count(target_normalized)
+    note = ""
 
     if count == 0:
-        return (
-            f"Error: No se encontró el texto 'target' en '{path}'. "
-            "Asegúrate de incluir la indentación exacta y suficientes líneas circundantes para que sea unívoco."
-        )
+        fuzzy_match = find_fuzzy_target(content_normalized, target_normalized)
+        if fuzzy_match:
+            target_normalized, note = fuzzy_match
+            count = 1
+        else:
+            return (
+                f"Error: No se encontró el texto 'target' en '{path}'. "
+                "Asegúrate de incluir la indentación exacta y suficientes líneas circundantes para que sea unívoco."
+            )
 
     if count > 1:
         return (
@@ -103,13 +168,18 @@ def edit_file(path: str, target: str, replacement: str) -> str:
 
     new_content = content_normalized.replace(target_normalized, replacement_normalized, 1)
 
-    # Conservar el formato original de fin de línea si era CRLF
     if "\r\n" in content:
         new_content = new_content.replace("\n", "\r\n")
 
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_content)
-        return f"Éxito: Archivo '{path}' actualizado correctamente con el bloque reemplazado."
+
+        syntax_warn = check_syntax(file_path, new_content)
+        msg = f"Éxito: Archivo '{path}' actualizado correctamente con el bloque reemplazado{note}."
+        if syntax_warn:
+            msg += f" {syntax_warn}. Por favor corrígelo con un edit_file adicional."
+        return msg
     except Exception as e:
         return f"Error al guardar cambios en '{path}': {str(e)}"
+

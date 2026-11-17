@@ -132,3 +132,61 @@ def search_codebase(query: str, path: str = ".", file_pattern: Optional[str] = N
     if len(matches) >= 30:
         res_str += "\n... [Búsqueda limitada a las primeras 30 coincidencias]"
     return res_str
+
+
+def get_file_outline(path: str) -> str:
+    """
+    Superpoder: Extrae el esquema sintáctico (AST) de clases, métodos y funciones
+    de un archivo sin necesidad de leer todo su código fuente.
+    Ahorra hasta un 90% de tokens de contexto.
+    """
+    file_path = Path(path).resolve()
+    if not file_path.exists():
+        return f"Error: El archivo '{path}' no existe."
+    if file_path.is_dir():
+        return f"Error: '{path}' es un directorio."
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            code = f.read()
+    except Exception as e:
+        return f"Error al leer '{path}': {e}"
+
+    if file_path.suffix == ".py":
+        import ast
+        try:
+            tree = ast.parse(code, filename=str(file_path))
+            outline = [f"Esquema AST de '{file_path.name}':"]
+            for node in tree.body:
+                if isinstance(node, ast.ClassDef):
+                    bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
+                    bases_str = f"({', '.join(bases)})" if bases else ""
+                    outline.append(f"\n  class {node.name}{bases_str} (Línea {node.lineno}):")
+                    doc = ast.get_docstring(node)
+                    if doc:
+                        outline.append(f"    \"\"\"{doc.splitlines()[0][:70]}\"\"\"")
+                    for item in node.body:
+                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            async_p = "async " if isinstance(item, ast.AsyncFunctionDef) else ""
+                            args = [a.arg for a in item.args.args]
+                            outline.append(f"    └── {async_p}def {item.name}({', '.join(args)}) (Línea {item.lineno})")
+                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    async_p = "async " if isinstance(node, ast.AsyncFunctionDef) else ""
+                    args = [a.arg for a in node.args.args]
+                    doc = ast.get_docstring(node)
+                    doc_str = f" - \"{doc.splitlines()[0][:60]}\"" if doc else ""
+                    outline.append(f"  {async_p}def {node.name}({', '.join(args)}) (Línea {node.lineno}){doc_str}")
+            return "\n".join(outline) if len(outline) > 1 else f"El archivo '{file_path.name}' no contiene definiciones principales de clases o funciones."
+        except Exception as e:
+            return f"Error al parsear AST de Python: {e}"
+
+    # Extractor con expresiones regulares para JS, TS, C, C++, etc.
+    import re
+    lines = code.split("\n")
+    outline = [f"Esquema de símbolos de '{file_path.name}':"]
+    pattern = re.compile(r"^\s*(class|interface|struct|enum|export\s+(?:default\s+)?(?:class|function)|def|function|async\s+function)\s+(\w+)")
+    for lineno, line in enumerate(lines, 1):
+        if pattern.search(line):
+            outline.append(f"  Línea {lineno:4d} | {line.strip()[:100]}")
+    return "\n".join(outline) if len(outline) > 1 else f"No se detectaron definiciones estructurales en '{file_path.name}'."
+

@@ -119,3 +119,4 @@ def get_git_status() -> str:
         return "No es un repositorio Git."
     _, out, _ = _run_git(["status", "-s"])
     return out if out else "Árbol de trabajo completamente limpio."
+

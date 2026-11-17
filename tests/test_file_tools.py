@@ -42,3 +42,4 @@ def test_edit_file_ambiguous_fails(tmp_path):
     # Intento de editar sin contexto suficiente
     res_edit = edit_file(str(test_file), "x = 10", "x = 20")
     assert "Error: El texto 'target' aparece 2 veces" in res_edit
+

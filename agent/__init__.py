@@ -14,3 +14,4 @@ __all__ = [
     "check_command_safety",
     "is_path_safe",
 ]
+

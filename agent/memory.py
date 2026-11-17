@@ -72,3 +72,4 @@ class ConversationMemory:
         new_history.extend(recent_messages)
 
         self.messages = new_history
+

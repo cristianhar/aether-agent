@@ -33,3 +33,4 @@ def test_command_safety_filtering():
 
     safe_ok2, _ = check_command_safety("git status")
     assert safe_ok2
+

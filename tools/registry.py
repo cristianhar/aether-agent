@@ -8,8 +8,9 @@ from typing import Any, Callable, Dict, List
 
 from tools.file_tools import edit_file, read_file, write_file
 from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, undo_checkpoint
-from tools.search_tools import list_directory, search_codebase
+from tools.search_tools import list_directory, search_codebase, get_file_outline
 from tools.shell_tools import run_command
+from tools.web_tools import search_web, fetch_web_page
 
 # Esquemas de herramientas compatibles con Ollama / OpenAI
 TOOLS_SCHEMA: List[Dict[str, Any]] = [
@@ -183,6 +184,65 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "properties": {}
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_file_outline",
+            "description": "Superpoder: Extrae el esquema sintáctico (AST) de clases, métodos y funciones de un archivo para entender su estructura sin consumir tokens leyendo todo el código.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta del archivo a inspeccionar."
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Superpoder: Realiza una búsqueda web en tiempo real para encontrar documentación técnica de librerías, foros o ejemplos de código.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Término o pregunta técnica a buscar."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Cantidad de resultados a retornar (por defecto 5)."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_web_page",
+            "description": "Superpoder: Descarga y extrae el texto limpio y legible de una URL o documentación técnica en la web.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL de la página web a leer."
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Límite máximo de caracteres a extraer (por defecto 4000)."
+                    }
+                },
+                "required": ["url"]
+            }
+        }
     }
 ]
 
@@ -194,6 +254,9 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "run_command": run_command,
     "search_codebase": search_codebase,
     "list_directory": list_directory,
+    "get_file_outline": get_file_outline,
+    "search_web": search_web,
+    "fetch_web_page": fetch_web_page,
     "create_checkpoint": create_checkpoint,
     "undo_checkpoint": undo_checkpoint,
     "get_git_diff": get_git_diff,
@@ -227,3 +290,4 @@ def execute_tool(name: str, arguments: Any) -> str:
         return f"Error en los parámetros de la herramienta '{name}': {str(te)}"
     except Exception as e:
         return f"Error durante la ejecución de la herramienta '{name}': {str(e)}"
+
