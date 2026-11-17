@@ -46,16 +46,25 @@ def _extract_py_symbols(filepath: Path) -> List[str]:
 
 
 def _extract_js_ts_symbols(filepath: Path) -> List[str]:
-    """Extrae exports y funciones en archivos JS/TS con regex liviano."""
+    """Extrae componentes, clases y funciones en archivos JS/TS."""
     symbols = []
     try:
         content = filepath.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return symbols
 
-    matches = re.findall(r"(?:export\s+)?(?:class|function|const|let)\s+([a-zA-Z0-9_]+)", content)
-    for m in matches[:8]:
-        symbols.append(f"symbol {m}")
+    # Funciones exportadas y clases
+    funcs = re.findall(r"(?:export\s+(?:default\s+)?)?(?:function|class)\s+([a-zA-Z0-9_]+)", content)
+    for f in funcs[:6]:
+        symbols.append(f"function {f}()")
+
+    # Componentes React: const App = () => ...
+    components = re.findall(r"(?:export\s+)?const\s+([A-Z][a-zA-Z0-9_]*)\s*=", content)
+    for c in components[:4]:
+        name = f"component {c}"
+        if name not in symbols and f"function {c}()" not in symbols:
+            symbols.append(name)
+
     return symbols
 
 

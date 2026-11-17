@@ -114,15 +114,22 @@ html, body {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  color: #ffffff;
-  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 5px 12px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: all 0.2s ease;
+}
+
+.btn-save.dirty {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  border-color: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
 }
 
 .btn-save:hover {
@@ -137,15 +144,128 @@ html, body {
   height: calc(100vh - 48px);
 }
 
-/* Left Sidebar - Repo Map */
+/* Left Sidebar */
 .aether-sidebar {
-  width: 280px;
-  min-width: 220px;
+  width: 290px;
+  min-width: 240px;
   background-color: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.sidebar-tab-header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  padding: 0 4px;
+}
+
+.sidebar-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+  transition: all 0.15s ease;
+}
+
+.sidebar-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.sidebar-tab-btn.active {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+}
+
+.file-explorer-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.file-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}
+
+.search-icon {
+  color: var(--text-muted);
+}
+
+.file-search-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-size: 12px;
+  outline: none;
+}
+
+.file-search-bar input::placeholder {
+  color: #6b7280;
+}
+
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: #c9d1d9;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-item:hover {
+  background-color: var(--bg-hover);
+  color: #ffffff;
+}
+
+.file-item.selected {
+  background-color: rgba(0, 210, 255, 0.12);
+  color: var(--accent-cyan);
+  border-left: 2px solid var(--accent-cyan);
+  font-weight: 600;
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-empty {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 .sidebar-header {

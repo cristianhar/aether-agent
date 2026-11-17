@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
-  Terminal,
   FileCode,
   Play,
   RotateCcw,
@@ -9,10 +8,13 @@ import {
   GitBranch,
   Cpu,
   Save,
-  CheckCircle2,
   Square,
   RefreshCw,
   FolderTree,
+  FileText,
+  Search,
+  Code2,
+  Terminal,
 } from "lucide-react";
 import "./App.css";
 
@@ -25,9 +27,12 @@ interface Message {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"editor" | "diff">("editor");
+  const [sidebarTab, setSidebarTab] = useState<"files" | "repomap">("files");
   const [selectedFile, setSelectedFile] = useState<string>("main.py");
   const [fileContent, setFileContent] = useState<string>("# Cargando código...");
   const [originalContent, setOriginalContent] = useState<string>("");
+  const [fileList, setFileList] = useState<string[]>([]);
+  const [fileFilter, setFileFilter] = useState<string>("");
   const [repoMap, setRepoMap] = useState<string>("");
   const [vramInfo, setVramInfo] = useState<string>("Conectando con GPU...");
   const [messages, setMessages] = useState<Message[]>([
@@ -41,11 +46,11 @@ export default function App() {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [gitDiff, setGitDiff] = useState<string>("");
 
-  // Cargar estado inicial y repo-map desde el puente local
   useEffect(() => {
     fetchStatus();
     fetchTree();
     fetchDiff();
+    loadFile("main.py");
   }, []);
 
   async function fetchStatus() {
@@ -53,7 +58,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/status`);
       if (res.ok) {
         const data = await res.json();
-        setVramInfo(data.vram_info || "Online");
+        setVramInfo(data.vram_info || "RTX 4060 · Online");
       }
     } catch {
       setVramInfo("Bridge desconectado (Inicia bridge/server.py)");
@@ -66,6 +71,9 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setRepoMap(data.repo_map || "");
+        if (Array.isArray(data.files)) {
+          setFileList(data.files);
+        }
       }
     } catch {}
   }
@@ -75,7 +83,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/diff`);
       if (res.ok) {
         const data = await res.json();
-        setGitDiff(data.diff || "No hay cambios pendientes de commit.");
+        setGitDiff(data.diff || "# No hay cambios pendientes de commit.");
       }
     } catch {}
   }
@@ -85,34 +93,47 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/file?path=${encodeURIComponent(path)}`);
       if (res.ok) {
         const data = await res.json();
-        setSelectedFile(path);
+        const resolvedPath = data.path || path;
+        setSelectedFile(resolvedPath);
         setFileContent(data.content);
         setOriginalContent(data.content);
+        setActiveTab("editor");
+      } else {
+        const err = await res.json();
+        alert(`❌ Error al abrir '${path}': ${err.error || "No encontrado"}`);
       }
     } catch (err) {
-      alert(`Error cargando archivo: ${err}`);
+      alert(`❌ Error de red cargando archivo: ${err}`);
     }
   }
 
   async function saveFile() {
+    if (fileContent === "# Cargando código..." || fileContent.trim() === "") {
+      const proceed = confirm(
+        `⚠️ El contenido de '${selectedFile}' parece estar vacío o aún cargando. ¿Estás seguro de que deseas guardar y sobrescribir el archivo en disco?`
+      );
+      if (!proceed) return;
+    }
+
     try {
       const res = await fetch(`${BRIDGE_URL}/api/file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: jsonBody({ path: selectedFile, content: fileContent }),
+        body: JSON.stringify({ path: selectedFile, content: fileContent }),
       });
       if (res.ok) {
+        const data = await res.json();
         setOriginalContent(fileContent);
         fetchDiff();
-        alert(`✅ Archivo '${selectedFile}' guardado con éxito.`);
+        fetchTree();
+        alert(`✅ Archivo '${data.path || selectedFile}' guardado en disco con éxito.`);
+      } else {
+        const err = await res.json();
+        alert(`❌ Error guardando: ${err.error || "Fallo en servidor"}`);
       }
     } catch (err) {
-      alert(`Error guardando: ${err}`);
+      alert(`❌ Error guardando: ${err}`);
     }
-  }
-
-  function jsonBody(data: any): string {
-    return JSON.stringify(data);
   }
 
   async function handleSendPrompt(e?: React.FormEvent) {
@@ -128,7 +149,7 @@ export default function App() {
       const res = await fetch(`${BRIDGE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: jsonBody({ prompt: userMsg }),
+        body: JSON.stringify({ prompt: userMsg }),
       });
 
       if (res.ok) {
@@ -139,6 +160,7 @@ export default function App() {
         ]);
         fetchDiff();
         fetchTree();
+        loadFile(selectedFile);
       } else {
         const err = await res.json();
         setMessages((prev) => [
@@ -166,6 +188,44 @@ export default function App() {
     setIsRunning(false);
   }
 
+  function getLanguage(filename: string): string {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    switch (ext) {
+      case "py": return "python";
+      case "ts":
+      case "tsx": return "typescript";
+      case "js":
+      case "jsx": return "javascript";
+      case "json": return "json";
+      case "md": return "markdown";
+      case "css": return "css";
+      case "html": return "html";
+      case "bat": return "bat";
+      case "sh": return "shell";
+      case "yml":
+      case "yaml": return "yaml";
+      case "ini":
+      case "toml": return "ini";
+      default: return "plaintext";
+    }
+  }
+
+  function getFileIcon(filename: string) {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    if (ext === "py") return <Code2 size={13} color="#3b82f6" />;
+    if (ext === "ts" || ext === "tsx") return <Code2 size={13} color="#00d2ff" />;
+    if (ext === "md") return <FileText size={13} color="#10b981" />;
+    if (ext === "json") return <FileCode size={13} color="#f59e0b" />;
+    if (ext === "bat" || ext === "sh") return <Terminal size={13} color="#a855f7" />;
+    return <FileCode size={13} color="#8b949e" />;
+  }
+
+  const filteredFiles = fileList.filter((f) =>
+    f.toLowerCase().includes(fileFilter.toLowerCase())
+  );
+
+  const isDirty = fileContent !== originalContent;
+
   return (
     <div className="aether-ide-root">
       {/* Top Navigation Bar */}
@@ -176,32 +236,77 @@ export default function App() {
           <span className="badge-tauri">Tauri v2 · Desktop</span>
         </div>
         <div className="status-badges">
-          <div className="badge">
+          <div className="badge" title="VRAM Hardware Guard">
             <Cpu size={14} />
-            <span>RTX 4060 · Qwen2.5-Coder 7B</span>
+            <span>{vramInfo}</span>
           </div>
           <div className="badge">
             <GitBranch size={14} />
             <span>main</span>
           </div>
-          <button className="btn-save" onClick={saveFile}>
-            <Save size={14} /> Guardar
+          <button
+            className={`btn-save ${isDirty ? "dirty" : ""}`}
+            onClick={saveFile}
+            title={isDirty ? "Guardar cambios pendientes (Ctrl+S)" : "Sin cambios"}
+          >
+            <Save size={14} /> {isDirty ? "Guardar *" : "Guardado"}
           </button>
         </div>
       </header>
 
       {/* Main Workspace Layout */}
       <div className="aether-workspace">
-        {/* Left Sidebar: Explorador de Archivos / Repo-Map */}
+        {/* Left Sidebar: File Explorer / AST Repo-Map */}
         <aside className="aether-sidebar">
-          <div className="sidebar-header">
-            <FolderTree size={16} />
-            <span>Arquitectura (Repo-Map)</span>
-            <button className="btn-icon" onClick={fetchTree} title="Actualizar mapa">
+          <div className="sidebar-tab-header">
+            <button
+              className={`sidebar-tab-btn ${sidebarTab === "files" ? "active" : ""}`}
+              onClick={() => setSidebarTab("files")}
+            >
+              <FolderTree size={14} /> Archivos ({fileList.length})
+            </button>
+            <button
+              className={`sidebar-tab-btn ${sidebarTab === "repomap" ? "active" : ""}`}
+              onClick={() => setSidebarTab("repomap")}
+            >
+              <Sparkles size={14} /> Mapa IA
+            </button>
+            <button className="btn-icon" onClick={fetchTree} title="Actualizar árbol y mapa">
               <RefreshCw size={12} />
             </button>
           </div>
-          <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico..."}</pre>
+
+          {sidebarTab === "files" ? (
+            <div className="file-explorer-container">
+              <div className="file-search-bar">
+                <Search size={13} className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Buscar archivo..."
+                  value={fileFilter}
+                  onChange={(e) => setFileFilter(e.target.value)}
+                />
+              </div>
+              <div className="file-list">
+                {filteredFiles.map((f) => (
+                  <div
+                    key={f}
+                    className={`file-item ${selectedFile === f ? "selected" : ""}`}
+                    onClick={() => loadFile(f)}
+                    title={f}
+                  >
+                    {getFileIcon(f)}
+                    <span className="file-name">{f}</span>
+                  </div>
+                ))}
+                {filteredFiles.length === 0 && (
+                  <div className="file-empty">No se encontraron archivos coincidentes.</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico AST..."}</pre>
+          )}
         </aside>
 
         {/* Center: Monaco Code Editor / Diff Editor */}
@@ -211,7 +316,7 @@ export default function App() {
               className={`tab ${activeTab === "editor" ? "active" : ""}`}
               onClick={() => setActiveTab("editor")}
             >
-              <FileCode size={14} /> {selectedFile}
+              <FileCode size={14} /> {selectedFile} {isDirty && "*"}
             </button>
             <button
               className={`tab ${activeTab === "diff" ? "active" : ""}`}
@@ -222,6 +327,14 @@ export default function App() {
             >
               <GitBranch size={14} /> Git Diff
             </button>
+            <button
+              className="btn-icon"
+              style={{ marginLeft: "auto", marginRight: "10px" }}
+              title="Recargar archivo desde el disco"
+              onClick={() => loadFile(selectedFile)}
+            >
+              <RotateCcw size={13} />
+            </button>
           </div>
 
           <div className="editor-container">
@@ -230,7 +343,7 @@ export default function App() {
                 height="100%"
                 theme="vs-dark"
                 path={selectedFile}
-                defaultLanguage="python"
+                language={getLanguage(selectedFile)}
                 value={fileContent}
                 onChange={(val) => setFileContent(val || "")}
                 options={{
@@ -246,8 +359,8 @@ export default function App() {
                 height="100%"
                 theme="vs-dark"
                 original={originalContent}
-                modified={fileContent}
-                language="python"
+                modified={gitDiff}
+                language={getLanguage(selectedFile)}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },

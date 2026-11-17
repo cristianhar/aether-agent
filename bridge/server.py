@@ -11,13 +11,38 @@ from pathlib import Path
 from socketserver import ThreadingMixIn
 import sys
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import urllib.parse
 
 # Asegurar que la raíz del proyecto esté en sys.path independientemente de dónde se ejecute
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+def _safe_resolve(rel_path: str) -> Optional[Path]:
+    """Resuelve rutas relativas contra _REPO_ROOT de manera segura y sin escapes de jaula."""
+    if not rel_path:
+        return None
+    clean = rel_path.strip().replace("\\", "/").lstrip("/")
+    target = (_REPO_ROOT / clean).resolve()
+    if not str(target).startswith(str(_REPO_ROOT)):
+        return None
+    return target
+
+
+def _list_workspace_files(root: Path) -> List[str]:
+    """Lista todos los archivos navegables del proyecto excluyendo dependencias y cachés."""
+    ignore_dirs = {".git", ".venv", "venv", "node_modules", ".pytest_cache", "__pycache__", "dist", "build", "target"}
+    results = []
+    for cur, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in ignore_dirs and not d.startswith(".")]
+        for f in files:
+            if f.startswith("."):
+                continue
+            full = Path(cur) / f
+            rel = str(full.relative_to(root)).replace("\\", "/")
+            results.append(rel)
+    return sorted(results)
 
 from agent.orchestrator import AgentOrchestrator
 from agent.session import SessionManager
@@ -93,10 +118,12 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
             })
 
         elif path == "/api/tree":
-            repo_map = generate_repo_map(max_files=50)
+            repo_map = generate_repo_map(root_dir=str(_REPO_ROOT), max_files=80)
+            file_list = _list_workspace_files(_REPO_ROOT)
             self._send_json({
-                "cwd": str(Path.cwd()),
+                "cwd": str(_REPO_ROOT),
                 "repo_map": repo_map,
+                "files": file_list,
             })
 
         elif path == "/api/file":
@@ -105,14 +132,15 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Parámetro 'path' requerido."}, 400)
                 return
 
-            p = Path(filepath_param).resolve()
-            if not p.exists() or not p.is_file():
-                self._send_json({"error": f"Archivo '{filepath_param}' no encontrado."}, 404)
+            p = _safe_resolve(filepath_param)
+            if not p or not p.exists() or not p.is_file():
+                self._send_json({"error": f"Archivo '{filepath_param}' no encontrado en el repositorio."}, 404)
                 return
 
             try:
                 content = p.read_text(encoding="utf-8", errors="replace")
-                self._send_json({"path": str(p), "content": content})
+                rel_path = str(p.relative_to(_REPO_ROOT)).replace("\\", "/")
+                self._send_json({"path": rel_path, "content": content})
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
 
@@ -173,11 +201,16 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Campos 'path' y 'content' requeridos."}, 400)
                 return
 
-            p = Path(filepath).resolve()
+            p = _safe_resolve(filepath)
+            if not p:
+                self._send_json({"error": f"Ruta '{filepath}' no permitida fuera del repositorio."}, 403)
+                return
+
             try:
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(content, encoding="utf-8", newline="")
-                self._send_json({"success": True, "message": f"Archivo '{p.name}' guardado correctamente."})
+                rel_path = str(p.relative_to(_REPO_ROOT)).replace("\\", "/")
+                self._send_json({"success": True, "path": rel_path, "message": f"Archivo '{p.name}' guardado correctamente."})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
 
