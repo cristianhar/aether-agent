@@ -976,50 +976,7 @@ class AgentOrchestrator:
                 if self.on_tool_call:
                     self.on_tool_call(tool_name, args)
 
-                # 1. Evaluación de Motor de Permisos y Límites de Workspace
-                target_p = args.get("path") or args.get("source")
-                cmd_p = args.get("command")
-                perm_req = PermissionRequest(
-                    tool_name=tool_name,
-                    category=category,
-                    level=perm_level,
-                    target_path=target_p,
-                    command=cmd_p,
-                    justification="Ejecución de acción autónoma de AETHER",
-                )
-
-                decision, reason = self.permissions.evaluate(perm_req)
-                if decision == PermissionDecision.DENY:
-                    tool_result = f"⛔ Denegado por política de permisos: {reason}"
-                    total_tool_failures += 1
-                    self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
-                    continue
-
-                # 2. Pre-Tool Hook (Validación de políticas y modos de operación)
-                allowed, hook_reason = self.hooks.pre_tool_use(tool_name, args)
-                if not allowed:
-                    tool_result = f"Bloqueado por Hook Pre-Tool ({self.hooks.mode}): {hook_reason}"
-                    total_tool_failures += 1
-                    self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
-                    continue
-
-                # 3. Control de seguridad para comandos de consola
-                if tool_name == "run_command":
-                    cmd_str = args.get("command", "")
-                    is_safe, sec_reason = check_command_safety(cmd_str)
-                    if not is_safe:
-                        should_run = False
-                        if self.confirm_callback:
-                            should_run = self.confirm_callback(
-                                f"Comando de riesgo detectado: '{cmd_str}'\nMotivo: {sec_reason}\n¿Deseas permitir su ejecución?"
-                            )
-                        if not should_run:
-                            tool_result = f"Ejecución bloqueada por seguridad: {sec_reason}"
-                            total_tool_failures += 1
-                            self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
-                            continue
-
-                # 4. Evaluación del Circuit Breaker Anti-Bucle
+                # 1. Evaluación del Circuit Breaker Anti-Bucle (Prevención Universal de Ciclos y Completion Guard)
                 tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
                 breaker_tripped, breaker_msg = self._check_circuit_breaker(
                     tool_name=tool_name,
@@ -1053,6 +1010,49 @@ class AgentOrchestrator:
                 ]:
                     current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
                     action_history.append(current_action_sig)
+
+                # 2. Evaluación de Motor de Permisos y Límites de Workspace
+                target_p = args.get("path") or args.get("source")
+                cmd_p = args.get("command")
+                perm_req = PermissionRequest(
+                    tool_name=tool_name,
+                    category=category,
+                    level=perm_level,
+                    target_path=target_p,
+                    command=cmd_p,
+                    justification="Ejecución de acción autónoma de AETHER",
+                )
+
+                decision, reason = self.permissions.evaluate(perm_req)
+                if decision == PermissionDecision.DENY:
+                    tool_result = f"⛔ Denegado por política de permisos: {reason}"
+                    total_tool_failures += 1
+                    self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
+                    continue
+
+                # 3. Pre-Tool Hook (Validación de políticas y modos de operación)
+                allowed, hook_reason = self.hooks.pre_tool_use(tool_name, args)
+                if not allowed:
+                    tool_result = f"Bloqueado por Hook Pre-Tool ({self.hooks.mode}): {hook_reason}"
+                    total_tool_failures += 1
+                    self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
+                    continue
+
+                # 4. Control de seguridad para comandos de consola
+                if tool_name == "run_command":
+                    cmd_str = args.get("command", "")
+                    is_safe, sec_reason = check_command_safety(cmd_str)
+                    if not is_safe:
+                        should_run = False
+                        if self.confirm_callback:
+                            should_run = self.confirm_callback(
+                                f"Comando de riesgo detectado: '{cmd_str}'\nMotivo: {sec_reason}\n¿Deseas permitir su ejecución?"
+                            )
+                        if not should_run:
+                            tool_result = f"Ejecución bloqueada por seguridad: {sec_reason}"
+                            total_tool_failures += 1
+                            self._record_and_feed_result(tool_name, args, tool_result, False, 0.0)
+                            continue
 
                 # 5. Ejecución de la herramienta con cronometraje (usando resultado pre-ejecutado si fue en paralelo)
                 tool_start = time.perf_counter()

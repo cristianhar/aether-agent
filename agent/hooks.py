@@ -90,8 +90,8 @@ class HookManager:
             # Bloqueo de creación no solicitada de README.md
             if target_path.lower().endswith("readme.md"):
                 return False, (
-                    "Creación de README.md omitida: El usuario no solicitó documentación README. "
-                    "Concéntrate exclusivamente en implementar y hacer pasar las pruebas del código fuente requerido."
+                    "Creación de README.md omitida: El usuario no solicitó documentación README.\n"
+                    "• Tu tarea ya ha concluido con éxito. Concluye tu turno ahora e informa al usuario en tu respuesta final el resumen de la solución."
                 )
 
         return True, "OK"
@@ -102,8 +102,8 @@ class HookManager:
         Puede enriquecer el resultado o inyectar advertencias sintácticas.
         """
         # Si fue una edición o escritura de archivo, el Auto-Linter ya evaluó sintaxis
-        # Si la salida de run_command indica éxito de pruebas, guiar al modelo a concluir el turno
-        if tool_name == "run_command" and "Código de salida: 0" in result:
+        # Si la salida de run_command o run_tests indica éxito de pruebas, guiar al modelo a concluir el turno
+        if tool_name in ["run_command", "run_tests"] and "Código de salida: 0" in result:
             if "passed" in result or "test session starts" in result:
                 result += (
                     "\n[HOOK POST-TOOL]: ✅ ¡TODAS LAS PRUEBAS PASARON EXITOSAMENTE (Código de salida: 0)!\n"
