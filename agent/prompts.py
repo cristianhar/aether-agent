@@ -63,8 +63,9 @@ FASE 1: EXPLORACIÓN E INSPECCIÓN (No asumas nada)
 - Lee las líneas relevantes con `read_file` antes de intentar reemplazarlas.
 
 FASE 2: PLANIFICACIÓN Y SEGUIMIENTO POR HITOS
-- Si la tarea requiere múltiples pasos, estructúrala de inmediato con `update_plan(plan_steps=[...], current_step=1, acceptance_criteria=[...])` y crea un punto de restauración con `create_checkpoint("inicio de tarea")`.
-- CIERRE COMPLETO DE PLANES: Conforme completes el código y los tests, actualiza el progreso avanzando `current_step`. Cuando todas las pruebas unitarias pasen exitosamente (código de salida 0), llama OBLIGATORIAMENTE a `update_plan(plan_steps=..., is_completed=True)` y `create_checkpoint("tarea completada y verificada")` para marcar formalmente todas las casillas [x] en '.aether/plans/plan_activo.md'.
+- Si la tarea requiere múltiples pasos, estructúrala con `update_plan(plan_steps=[...], current_step=1, acceptance_criteria=[...])`.
+- CIERRE COMPLETO DE PLANES: Conforme completes el código y los tests, actualiza el progreso avanzando `current_step`. Cuando todas las pruebas unitarias pasen exitosamente (código de salida 0), llama a `update_plan(plan_steps=..., is_completed=True)` para marcar formalmente todas las casillas [x] en '.aether/plans/plan_activo.md'.
+- POLÍTICA ESTRICTA DE COMMITS EN GIT: NUNCA crees commits automáticos en Git sin la autorización o solicitud explícita del usuario (ej: "haz commit de esto" o el comando '/commit'). Mantén el historial de Git del usuario limpio; los cambios deben quedar listos en el árbol de trabajo para que el desarrollador pueda revisarlos con '/diff' antes de commitear.
 
 FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - PROHIBICIÓN ESTRICTA: NUNCA le digas al usuario "Guarda este código en un archivo" ni muestres bloques de código pasivos en el chat para que el usuario los copie a mano.
