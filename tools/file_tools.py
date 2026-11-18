@@ -180,10 +180,16 @@ def write_file(path: str, content: str) -> str:
         return f"Error al escribir en '{path}': {str(e)}"
 
 
-def edit_file(path: str, target: str, replacement: str) -> str:
+def edit_file(
+    path: str,
+    target: Optional[str] = None,
+    replacement: Optional[str] = None,
+    content: Optional[str] = None,
+) -> str:
     """
     Reemplaza el bloque 'target' por 'replacement' dentro del archivo.
-    Incluye fallback con Fuzzy Matching inteligente y Auto-Linter sintáctico.
+    Incluye fallback con Fuzzy Matching inteligente, Auto-Linter sintáctico
+    y auto-rescate a reescritura completa si target no es provisto.
     """
     file_path = get_absolute_path(path)
     if not file_path.exists():
@@ -195,15 +201,9 @@ def edit_file(path: str, target: str, replacement: str) -> str:
     if file_path.is_dir():
         return f"Error: '{path}' es un directorio."
 
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-    except Exception as e:
-        return f"Error al leer el archivo '{path}': {str(e)}"
-
-    content_normalized = content.replace("\r\n", "\n")
-    target_normalized = target.replace("\r\n", "\n")
-    replacement_normalized = replacement.replace("\r\n", "\n")
+    # Auto-rescate: Si target no fue especificado (None) pero se envió content, reescribir con write_file
+    if target is None and content is not None and content.strip():
+        return write_file(path=path, content=content)
 
     if not target or not target.strip():
         return (
@@ -212,6 +212,18 @@ def edit_file(path: str, target: str, replacement: str) -> str:
             f"• Si deseas INSERTAR código al inicio o final, incluye como 'target' las líneas reales existentes en el archivo usando 'read_file'.\n"
             f"• NUNCA envíes target=''."
         )
+
+    rep_text = replacement if replacement is not None else (content or "")
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            file_content = f.read()
+    except Exception as e:
+        return f"Error al leer el archivo '{path}': {str(e)}"
+
+    content_normalized = file_content.replace("\r\n", "\n")
+    target_normalized = target.replace("\r\n", "\n")
+    replacement_normalized = rep_text.replace("\r\n", "\n")
 
     count = content_normalized.count(target_normalized)
     note = ""
@@ -287,7 +299,7 @@ def edit_file(path: str, target: str, replacement: str) -> str:
             "Revisa el bloque 'target' e intenta con una edición diferente o usa 'write_file'."
         )
 
-    if "\r\n" in content:
+    if "\r\n" in file_content:
         new_content = new_content.replace("\n", "\r\n")
 
     try:
