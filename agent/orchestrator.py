@@ -329,7 +329,7 @@ class AgentOrchestrator:
             elif tool_name == "edit_file":
                 p_match = re.search(r'"path":\s*"([^"]+)"', content)
                 t_match = re.search(r'"target":\s*"(.*?)"(?:\s*,\s*"replacement")', content, re.DOTALL)
-                r_match = re.search(r'"replacement":\s*"(.*?)"\s*\}\s*\}', content, re.DOTALL)
+                r_match = re.search(r'"replacement":\s*"(.*?)"\s*\}\s*\}?', content, re.DOTALL)
                 if p_match and t_match and r_match:
                     return [{
                         "function": {
@@ -338,6 +338,16 @@ class AgentOrchestrator:
                                 "path": p_match.group(1),
                                 "target": t_match.group(1).replace("\\n", "\n").replace('\\"', '"'),
                                 "replacement": r_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+                            }
+                        }
+                    }]
+                elif p_match and r_match:
+                    return [{
+                        "function": {
+                            "name": "write_file",
+                            "arguments": {
+                                "path": p_match.group(1),
+                                "content": r_match.group(1).replace("\\n", "\n").replace('\\"', '"')
                             }
                         }
                     }]

@@ -161,4 +161,26 @@ def test_auto_heal_test_class_aliasing(tmp_path):
     assert "from kv_store import KVStore as KeyValueStore" in healed
 
 
+def test_write_file_normalizes_literal_escaped_newlines(tmp_path):
+    """Verifica que si write_file recibe código con '\\n' literales sin saltos de línea reales, se normalicen a saltos reales."""
+    f = tmp_path / "one_liner.py"
+    raw_escaped = r"import json\n\ndef get_val():\n    return 42"
+    res = write_file(str(f), raw_escaped)
+    assert "guardado correctamente" in res
+    assert "Error de sintaxis" not in res
+    content = f.read_text(encoding="utf-8")
+    assert "\n" in content
+    assert r"\n" not in content
+
+
+def test_edit_file_target_none_forwards_to_write_file(tmp_path):
+    """Verifica que si edit_file se llama omitiendo 'target' pero proveyendo 'replacement', se reescriba el archivo."""
+    f = tmp_path / "target_none.py"
+    f.write_text("old content", encoding="utf-8")
+    res = edit_file(str(f), target=None, replacement="new content")
+    assert "guardado correctamente" in res
+    assert f.read_text(encoding="utf-8") == "new content"
+
+
+
 

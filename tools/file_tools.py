@@ -244,6 +244,10 @@ def write_file(path: str, content: str) -> str:
     """
     file_path = get_absolute_path(path)
     try:
+        # Normalización de strings con escapes literales (\n, \t) producidos por LLMs locales
+        if r"\n" in content and "\n" not in content:
+            content = content.replace(r"\n", "\n").replace(r"\t", "\t").replace(r'\"', '"')
+
         content = auto_heal_missing_imports(file_path, content)
 
         # Chequeo de idempotencia SHA-256 para evitar bucles de sobreescritura idéntica
@@ -297,8 +301,9 @@ def edit_file(
         return f"Error: '{path}' es un directorio."
 
     # Auto-rescate: Si target no fue especificado (None) pero se envió content, reescribir con write_file
-    if target is None and content is not None and content.strip():
-        return write_file(path=path, content=content)
+    rep_text = replacement if replacement is not None else content
+    if target is None and rep_text and rep_text.strip():
+        return write_file(path=path, content=rep_text)
 
     if not target or not target.strip():
         return (
@@ -307,8 +312,6 @@ def edit_file(
             f"• Si deseas INSERTAR código al inicio o final, incluye como 'target' las líneas reales existentes en el archivo usando 'read_file'.\n"
             f"• NUNCA envíes target=''."
         )
-
-    rep_text = replacement if replacement is not None else (content or "")
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
