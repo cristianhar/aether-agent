@@ -77,7 +77,7 @@ class AgentOrchestrator:
         model: str = "qwen2.5-coder:7b",
         host: str = "http://127.0.0.1:11434",
         system_prompt: str = SYSTEM_PROMPT,
-        max_iterations: int = 15,
+        max_iterations: int = 25,
         session_id: Optional[str] = None,
         session_manager: Optional[SessionManager] = None,
         permission_engine: Optional[PermissionEngine] = None,
