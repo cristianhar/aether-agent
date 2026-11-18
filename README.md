@@ -6,7 +6,7 @@
 
 **Local-First Autonomous AI Software Engineering Agent & Interactive CLI**
 
-[![Tests](https://img.shields.io/badge/tests-65%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-111%20passed-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
 [![Repository](https://img.shields.io/badge/github-cristianhar%2Faether--agent-181717?logo=github)](https://github.com/cristianhar/aether-agent)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
@@ -14,7 +14,7 @@
 [![Desktop](https://img.shields.io/badge/desktop-Tauri%20v2%20%2B%20Monaco-blueviolet.svg)]()
 [![API Cost](https://img.shields.io/badge/cost-$0%20Offline-success.svg)]()
 
-[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Master Plan](./docs/plan_maestro.md) • [Tauri Desktop Architecture](./docs/desktop_tauri_architecture.md) • [GitHub Repository](https://github.com/cristianhar/aether-agent)
+[Español](./README.es.md) • [Architecture Guide](./docs/architecture.md) • [Parity Plan 100% Antigravity](./docs/plan_paridad_100_antigravity.md) • [Tauri Desktop Architecture](./docs/desktop_tauri_architecture.md) • [GitHub Repository](https://github.com/cristianhar/aether-agent)
 
 </div>
 
@@ -22,28 +22,30 @@
 
 ## ⚡ Overview
 
-**AETHER IDE** is an autonomous AI coding assistant running **100% offline and locally** on your GPU via Ollama (`qwen2.5-coder:7b`). It brings together the terminal-first autonomy of Claude Code, the surgical code editing and AST repo-mapping of Cursor/Aider, and the zero-latency responsiveness of an offline development environment.
+**AETHER IDE** is an autonomous AI coding assistant running **100% offline and locally** on your GPU via Ollama (`qwen2.5-coder:7b`). It brings together the terminal-first autonomy of Google Antigravity and Claude Code, the surgical code editing and AST repo-mapping of Cursor/Aider, and the zero-latency responsiveness of an offline development environment.
 
 Unlike simple chat interfaces, AETHER operates as an active software engineer: it reads your project structure, inspects abstract syntax trees, writes physical files to disk, executes unit tests in subshells, detects runtime tracebacks, and automatically self-heals failing code in closed feedback loops.
 
 ---
 
-## 🌟 Key Features & Superpowers
+## 🌟 Key Features & Superpowers (100% Antigravity Parity)
 
 | Capability | Technical Implementation | Practical Benefit |
 | :--- | :--- | :--- |
 | **Autonomous ReAct Loop** | Pydantic JSON schemas with Ollama `/api/chat` streaming | The agent decides tools, runs them, observes terminal outputs, and iterates automatically. |
+| **Antigravity Specialized Subagents** | `delegate_research` (read-only AST audit) & `delegate_test` | Safely offload codebase exploration or test diagnosing into isolated memory contexts. |
+| **Interactive Planning Mode (`/plan`)** | Markdown artifacts in `.aether/plans/plan_activo.md` with interactive checkboxes (`- [x]`) | Visual progress tracking across multi-step refactorings with guaranteed step completion. |
+| **Local Semantic Memory (RAG)** | Persistent SQLite vector memory via `nomic-embed-text` with lexical fallback | Remember architecture decisions, user rules, and conventions across restarts via `/memory`. |
+| **Concurrent Async Tool Dispatch** | `ThreadPoolExecutor` parallel pre-execution for passive tools | Drastically reduces inspection latency when gathering files, outlines, and maps. |
+| **Mathematical Circuit Breaker** | Sliding-window periodicity detection ($p \in [1, 3]$) & SHA-256 state tracking | Prevents infinite retry ping-pong loops when tools fail repeatedly. |
+| **Context Compaction (`/compact`)** | Executive summarization of older conversation turns | Keeps reasoning sharp while freeing GPU VRAM during extended coding sessions. |
 | **Transactional Patch Engine** | Atomic writes (`.tmp` + `os.replace`), SHA-256 pre-check & multi-file rollback | Zero risk of file corruption, half-written edits, or concurrency conflicts. |
 | **Capability Permission Engine** | Path boundary jail, dangerous command regex & approval prompts | Prevents accidental system damage outside the workspace. |
-| **Safe File-Level Checkpoints** | Pre-image snapshots in `.aether/checkpoints/<id>/` | Restores only agent-modified files without destructive `git reset --hard`. |
+| **Safe File-Level Checkpoints** | Pre-image snapshots in `.aether/checkpoints/<id>/` & non-intrusive Git snapshots | Restores previous states cleanly without polluting the developer's git commit log. |
 | **SQLite Session Management** | Persistent `.aether/sessions.db` with `/sessions` & `/resume` | Resume conversations and audit tool executions across restarts. |
-| **Process Manager & Cancellation** | Non-blocking execution with process IDs & Windows tree-kill | Run long dev servers/tests with instant `/cancel` support. |
-| **Structured Telemetry** | High-performance JSONL logging with `/telemetry` summary | Realtime metrics on turn duration, token usage, and tool success rate. |
 | **Compact Repo-Map** | AST symbol extraction for classes, signatures, and functions | Maps multi-file repositories in ~300 tokens without overflowing context windows. |
 | **AST Static Diagnostics** | Python AST & JSON syntax parsing (`get_diagnostics`) | Verifies code validity before and after applying edits. |
 | **Model Context Protocol (MCP)** | JSON-RPC 2.0 stdio client with `tools/list` and `tools/call` | Connects external MCP servers via `.aether/mcp_servers.json`. |
-| **Operational Modes** | Hook system supporting `/mode ask`, `/mode agent`, `/mode plan` | Read-only inspection in `ask` mode; full file creation and execution in `agent` mode. |
-| **Claude-Code Subagents** | Isolated conversation contexts sharing the local model | Offload heavy research or log audits to auxiliary subagents without polluting primary memory. |
 
 ---
 
@@ -107,13 +109,17 @@ pip install -r requirements.txt
 | Slash Command | Description |
 | :--- | :--- |
 | `/cd <path>` | Switch active workspace directory and generate a fresh Repo-Map. |
+| `/plan [goal]` | Design and view architectural plan artifacts (`.aether/plans/plan_activo.md`) with interactive checkboxes. |
+| `/memory [search <query>]` | Query or search stored technical facts and architectural decisions in persistent semantic memory. |
+| `/compact` | Compact conversation history into an executive summary, freeing GPU VRAM tokens. |
 | `/mode [agent\|ask\|plan]` | Switch between autonomous agent mode, read-only inspection, and architectural planning. |
 | `/map` | Display complete repository structure with class outlines and function signatures. |
 | `/test [target]` | Run test suites (`pytest`) and trigger automatic self-repair if tests fail. |
 | `/diff` | Display colorized syntax-highlighted git diff of pending uncommitted changes. |
-| `/commit [message]` | Stage all changes and generate a clean git commit. |
+| `/commit [message]` | Stage all changes and generate a clean git commit under explicit developer control. |
 | `/export [file.md]` | Export the active session reasoning transcript and generated code into Markdown. |
 | `/undo` | Roll back to the last safe checkpoint snapshot in 1 second. |
+| `/checkpoint [msg]` | Save a safe restoration checkpoint snapshot with Git. |
 | `/model <name>` | Switch local models on-the-fly (e.g. `/model qwen2.5-coder:7b` or `/model deepseek-r1:7b`). |
 | `/status` | View active model, VRAM token telemetry, and Git working tree status. |
 | `/clear` | Reset context memory to release GPU VRAM. |
@@ -123,7 +129,7 @@ pip install -r requirements.txt
 
 ## 🧪 Testing
 
-AETHER comes with a full automated test suite verifying file editing, syntax linting, repo-mapping, shell execution, and hook policies:
+AETHER comes with an exhaustive automated test suite (111 tests passing) verifying file editing, syntax linting, repo-mapping, shell execution, subagents, and hook policies:
 
 ```bash
 pytest -v
