@@ -78,6 +78,16 @@ def test_edit_file_noop_rejected(tmp_path):
     assert "IDÉNTICO" in res
 
 
+def test_calculate_file_hash_and_sha_noop(tmp_path):
+    from tools.file_tools import calculate_file_hash
+    f = tmp_path / "data.txt"
+    f.write_text("hello world", encoding="utf-8")
+
+    h1 = calculate_file_hash(f)
+    assert h1 is not None
+    assert len(h1) == 64
+
+
 def test_edit_file_fuzzy_similarity_match(tmp_path):
     f = tmp_path / "async_mod.py"
     original = """@pytest.mark.asyncio

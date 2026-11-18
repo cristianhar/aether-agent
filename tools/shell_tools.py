@@ -11,144 +11,82 @@ from typing import Optional
 
 
 def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, stdout: str, stderr: str) -> Optional[str]:
-    """Genera sugerencias y diagnósticos contextuales cuando un comando de consola falla."""
-    combined = f"{stdout}\n{stderr}".lower()
-    is_cancelled = "operation cancelled" in combined or "operation aborted" in combined or "operación cancelada" in combined
+    """
+    Normalizador Universal de Trazas de Ejecución (Políglota: Python, Node/TS, Rust, Go, C/C++).
+    Identifica de forma dinámica y sin hardcodeos de librerías:
+    1. El archivo fuente culpable del fallo y su número de línea.
+    2. La causa raíz / última línea del error.
+    3. Una directiva limpia de acción sugerida.
+    """
+    raw_output = f"{stdout}\n{stderr}".strip()
+    is_cancelled = "operation cancelled" in raw_output.lower() or "operation aborted" in raw_output.lower()
 
     if exit_code == 0 and not is_cancelled:
         return None
 
-    hints = []
+    lines = [line.strip() for line in raw_output.splitlines() if line.strip()]
+    if not lines and not is_cancelled:
+        return None
 
-    # 1. Detección de herramientas de scaffolding canceladas por falta de TTY en carpetas con archivos (ej: create-vite)
+    # 1. Localizar archivo y línea culpable (patrones estándar de compiladores e intérpretes)
+    loc_pattern = r'(?:File "|\bat |-->\s*|\b)([a-zA-Z0-9_\-\.\/\\]+\.[a-zA-Z0-9_]+)[\'"]?(?:,\s*line\s*|:)(\d+)'
+
+    culprit_file = None
+    culprit_line = None
+
+    for line in reversed(lines):
+        m = re.search(loc_pattern, line)
+        if m:
+            candidate_file = m.group(1).replace("\\", "/")
+            if not any(ignore in candidate_file.lower() for ignore in [".venv", "site-packages", "node_modules", "rustlib"]):
+                culprit_file = Path(candidate_file).name
+                culprit_line = m.group(2)
+                break
+
+    # 2. Localizar la causa raíz (última línea relevante de error)
+    root_cause = lines[-1] if lines else "Error no especificado"
+    for line in reversed(lines):
+        if any(err_kw in line for err_kw in ["Error:", "Exception:", "FAILED", "error[", "panic:", "AssertionError", "SyntaxError"]):
+            root_cause = line
+            break
+
+    if len(root_cause) > 200:
+        root_cause = root_cause[:200] + "..."
+
+    # 3. Construir banner contextual universal
+    file_info = f"'{culprit_file}' (línea {culprit_line})" if culprit_file and culprit_line else ("en el proyecto" if culprit_file else "durante la ejecución")
+    action_suggestion = f"Inspecciona {file_info} con 'read_file' y corrige el código fuente con 'edit_file' o 'write_file'." if culprit_file else "Analiza el error y modifica los archivos afectados antes de reintentar."
+
+    banner = (
+        f"🚨 [DIAGNÓSTICO UNIVERSAL DE EJECUCIÓN (Código de salida {exit_code})]:\n"
+        f"• Comando: {command}\n"
+        f"• Fallo detectado: {file_info}\n"
+        f"• Causa raíz: {root_cause}\n"
+        f"• ACCIÓN RECOMENDADA: {action_suggestion}"
+    )
+
+    structural_hints = []
+    combined = raw_output.lower()
     if is_cancelled:
-        hints.append(
-            "⚠️ [OPERACIÓN CANCELADA]: El comando se canceló automáticamente ('Operation cancelled') por la herramienta (create-vite / scaffolding) "
-            "porque solicitó confirmación interactiva y la consola es no interactiva (o el directorio ya contiene archivos existentes).\n"
-            "• NO asumas que el proyecto fue creado.\n"
-            "• Para proyectos web en un repositorio existente, crea una subcarpeta limpia: 'npm create vite@latest frontend -- --template vanilla', "
-            "o crea directamente los archivos 'package.json' e 'index.html' con write_file."
+        tool_hint = f" ({lines[0]})" if lines and "cancelled" not in lines[0].lower() and len(lines[0]) < 60 else ""
+        structural_hints.append(
+            f"⚠️ [OPERACIÓN CANCELADA]: El comando{tool_hint} se canceló automáticamente ('Operation cancelled') "
+            "porque solicitó confirmación interactiva en una consola no interactiva. Para scaffolding, pasa banderas no interactivas o crea los archivos con 'write_file'."
         )
-
-    # 1. Detección de proyecto en subcarpeta (ej: npm install en root cuando package.json está en un subproyecto)
-    if ("enoent" in combined or "no such file or directory" in combined) and ("package.json" in combined or "npm" in command.lower()):
+    if ("enoent" in combined or "no such file or directory" in combined) and "package.json" in combined:
         try:
             sub_pkgs = list(work_dir.glob("*/package.json"))
             if sub_pkgs:
                 sub_dirs = [p.parent.name for p in sub_pkgs if p.parent.name != "node_modules"][:3]
                 if sub_dirs:
-                    hints.append(
-                        f"💡 [DIAGNÓSTICO AUTOMÁTICO DE TERMINAL]: No se encontró 'package.json' en '{work_dir.name}'. "
-                        f"Sin embargo, se detectó en los subdirectorios: {sub_dirs}. "
-                        "Recuerda que cada llamada a 'run_command' inicia una subterminal independiente. "
-                        f"Para ejecutar comandos allí, pasa el parámetro cwd='{sub_dirs[0]}' o encadena 'cd {sub_dirs[0]}; {command}'."
+                    structural_hints.append(
+                        f"💡 [DIAGNÓSTICO DE RUTA]: Se detectó 'package.json' en subdirectorios: {sub_dirs}. Pasa cwd='{sub_dirs[0]}' para ejecutar comandos allí."
                     )
         except Exception:
             pass
 
-    # 2. Detección de SyntaxError
-    if "syntaxerror" in combined:
-        hints.append(
-            "🚨 [DIAGNÓSTICO DE SINTAXIS]: La ejecución falló con un SyntaxError. "
-            "Está PROHIBIDO volver a ejecutar 'run_command' con este script sin antes corregir la sintaxis usando 'edit_file'."
-        )
-
-    # 3. Detección de EOFError en scripts interactivos (input())
-    if "eoferror" in combined or "eof when reading a line" in combined:
-        hints.append(
-            "💡 [DIAGNÓSTICO DE ENTRADA INTERACTIVA]: El comando falló por EOFError porque el script ejecutó input() en una terminal no interactiva.\n"
-            "• Para testear scripts con input(), valida su sintaxis con 'python -m py_compile <archivo>.py' o 'python -c \"import <modulo>\"'.\n"
-            "• NUNCA intentes editar el archivo buscando 'EOFError'; este texto proviene de la consola, no del archivo."
-        )
-
-    # 4. Detección de discrepancia numérica en aserciones de tests (unittest / pytest)
-    if "assertionerror" in combined or "failed (failures=" in combined:
-        assert_m = re.search(r"assertionerror:\s*([0-9\.\-]+)\s*!=\s*([0-9\.\-]+)", f"{stdout}\n{stderr}", re.IGNORECASE)
-        if not assert_m:
-            assert_m = re.search(r"assert\s+([0-9\.\-]+)\s*==\s*([0-9\.\-]+)", f"{stdout}\n{stderr}", re.IGNORECASE)
-
-        if assert_m:
-            actual_str, expected_str = assert_m.group(1), assert_m.group(2)
-            try:
-                act_num = float(actual_str)
-                act_rounded = round(act_num, 2)
-            except ValueError:
-                act_rounded = actual_str
-
-            hints.append(
-                f"💡 [DIAGNÓSTICO AUTOMÁTICO DE DISCREPANCIA EN TEST]:\n"
-                f"• Tu código en ejecución produjo el valor REAL: {actual_str} (aprox: {act_rounded}).\n"
-                f"• Tu archivo de prueba esperaba: {expected_str}.\n"
-                f"• REGLA FUNDAMENTAL: En Python, el primer valor ({actual_str}) es lo que tu función realmente devuelve.\n"
-                f"• Si tu código usa 'statistics.stdev([1, 2, 3, 4, 5])', calcula desviación MUESTRAL (N-1) y da 1.58 (NO 1.41, que sería poblacional pstdev).\n"
-                f"• ACCIÓN INMEDIATA CON edit_file: Abre el archivo de prueba ('test_...py') y actualiza el valor esperado a {act_rounded} (o {actual_str}):\n"
-                f"  self.assertAlmostEqual(..., {act_rounded}, places=2)\n"
-                f"• ADVERTENCIA DE FRAMEWORK: Si usas unittest, NUNCA uses 'pytest.approx' dentro de 'assertAlmostEqual'."
-            )
-
-    # 5. Detección de incompatibilidad pytest.approx en unittest
-    if "approxscalar" in combined or ("approx" in combined and ("typeerror" in combined or "nameerror" in combined) and "unittest" in command.lower()):
-        hints.append(
-            "⚠️ [INCOMPATIBILIDAD DE FRAMEWORK DE TEST]: Has mezclado 'pytest.approx' dentro de 'unittest.TestCase'.\n"
-            "• 'pytest.approx' NO es compatible con 'self.assertAlmostEqual()'.\n"
-            "• Para unittest: usa ÚNICAMENTE 'self.assertAlmostEqual(actual, esperado, places=2)'. Elimina 'pytest.approx' y 'import pytest'."
-        )
-
-    # 6. Detección de NameError / módulo no importado con localización de archivo
-    raw_output = f"{stdout}\n{stderr}"
-    name_err_m = re.search(r"NameError:\s*name\s*['\"](\w+)['\"]\s*is not defined", raw_output, re.IGNORECASE)
-    if name_err_m:
-        missing_var = name_err_m.group(1)
-        loc_m = re.search(r"([a-zA-Z0-9_\-\.\/\\]+\.py):(\d+):(?:\s*in\s+|\s*NameError)", raw_output, re.IGNORECASE)
-        if not loc_m:
-            loc_m = re.search(r'File "([^"]+\.py)", line (\d+)', raw_output, re.IGNORECASE)
-
-        file_hint = ""
-        if loc_m:
-            err_file = Path(loc_m.group(1)).name
-            err_line = loc_m.group(2)
-            file_hint = f" en el archivo '{err_file}' (línea {err_line})"
-
-        hints.append(
-            f"💡 [DIAGNÓSTICO AUTOMÁTICO DE NameError]:\n"
-            f"• La variable o módulo '{missing_var}' no está definida{file_hint}.\n"
-            f"• ATENCIÓN: Asegúrate de editar el archivo CORRECTO{file_hint}. Si el fallo ocurrió en un archivo de test ('test_...py'), edita el archivo de test, NO el módulo probado.\n"
-            f"• Si '{missing_var}' es un módulo estándar de Python (ej: time, math, os, sys, json, random, re), agrega 'import {missing_var}' al principio de ese archivo."
-        )
-
-    # 7. Detección de pruebas asíncronas no soportadas en pytest (async def sin plugin)
-    if "async def functions are not natively supported" in combined or "unknown pytest.mark.asyncio" in combined:
-        hints.append(
-            "🚨 [DIAGNÓSTICO DE TEST ASÍNCRONO EN PYTEST]:\n"
-            "• Pytest no soporta 'async def test_...()' de forma nativa sin el plugin 'pytest-asyncio'.\n"
-            "• ACCIÓN OBLIGATORIA: Convierte la función de prueba en una función síncrona normal 'def test_...()' "
-            "y ejecuta la corrutina usando 'asyncio.run()':\n"
-            "  def test_mi_corrutina():\n"
-            "      resultado = asyncio.run(mi_corrutina())\n"
-            "      assert resultado == ...\n"
-            "• Elimina el decorador '@pytest.mark.asyncio'."
-        )
-
-    # 3. Detección de archivo Python inexistente en CWD pero existente en subcarpeta
-    if ("can't open file" in combined or "no such file" in combined) and "python" in command.lower():
-        try:
-            parts = command.split()
-            for p in parts:
-                if p.endswith(".py"):
-                    script_name = Path(p).name
-                    matches = list(work_dir.glob(f"**/{script_name}"))
-                    matches = [m for m in matches if ".venv" not in str(m) and "__pycache__" not in str(m)]
-                    if matches:
-                        rel_p = matches[0].relative_to(work_dir)
-                        hints.append(
-                            f"💡 [DIAGNÓSTICO DE RUTA]: El archivo '{p}' no existe en la raíz actual. "
-                            f"Fue localizado en '{rel_p}'. Ejecuta con 'python {rel_p}' o pasa cwd='{rel_p.parent}'."
-                        )
-                    break
-        except Exception:
-            pass
-
-    return "\n\n".join(hints) if hints else None
+    all_parts = [banner] + structural_hints
+    return "\n\n".join(all_parts)
 
 
 def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> str:

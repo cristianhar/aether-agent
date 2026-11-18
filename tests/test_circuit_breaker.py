@@ -154,13 +154,13 @@ def test_shell_diagnostics_detects_subproject_package_json():
             stderr=stderr_msg
         )
         assert diag is not None
-        assert "DIAGNÓSTICO AUTOMÁTICO DE TERMINAL" in diag
+        assert "DIAGNÓSTICO" in diag
         assert "my-vite-app" in diag
         assert "cwd=" in diag
 
 
 def test_shell_diagnostics_flags_syntax_error():
-    """Verifica que el auto-diagnóstico identifique SyntaxError en consola."""
+    """Verifica que el auto-diagnóstico identifique SyntaxError en consola de forma universal."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         ws = Path(tmp_dir)
         diag = _generate_shell_diagnostics(
@@ -171,8 +171,10 @@ def test_shell_diagnostics_flags_syntax_error():
             stderr="File 'minijuego.py', line 23\n    print(\"texto)\nSyntaxError: unterminated string literal"
         )
         assert diag is not None
-        assert "DIAGNÓSTICO DE SINTAXIS" in diag
-        assert "PROHIBIDO volver a ejecutar" in diag
+        assert "DIAGNÓSTICO UNIVERSAL" in diag
+        assert "minijuego.py" in diag
+        assert "23" in diag
+        assert "SyntaxError" in diag
 
 
 def test_auto_linter_directive_in_write_file():
@@ -196,7 +198,7 @@ def test_persistent_assertion_error_regex():
 
 
 def test_shell_diagnostics_detects_assertion_error_discrepancy():
-    """Verifica que shell diagnostics extraiga los valores real y esperado e instruya la corrección."""
+    """Verifica que shell diagnostics extraiga la causa raíz de un AssertionError en tests."""
     from tools.shell_tools import _generate_shell_diagnostics
     with tempfile.TemporaryDirectory() as tmp_dir:
         diag = _generate_shell_diagnostics(
@@ -207,15 +209,13 @@ def test_shell_diagnostics_detects_assertion_error_discrepancy():
             stderr="AssertionError: 1.5811388300841898 != 1.41 within 2 places (0.17113883008418984 difference)"
         )
         assert diag is not None
-        assert "DIAGNÓSTICO AUTOMÁTICO DE DISCREPANCIA EN TEST" in diag
+        assert "DIAGNÓSTICO UNIVERSAL" in diag
+        assert "AssertionError" in diag
         assert "1.5811388300841898" in diag
-        assert "1.41" in diag
-        assert "1.58" in diag
-        assert "assertAlmostEqual" in diag
 
 
 def test_shell_diagnostics_detects_pytest_approx_in_unittest():
-    """Verifica que se alerte si se intenta mezclar pytest.approx en unittest."""
+    """Verifica que se capture la causa raíz ante errores de tipos o discrepancias de testing."""
     from tools.shell_tools import _generate_shell_diagnostics
     with tempfile.TemporaryDirectory() as tmp_dir:
         diag = _generate_shell_diagnostics(
@@ -226,8 +226,9 @@ def test_shell_diagnostics_detects_pytest_approx_in_unittest():
             stderr="TypeError: unsupported operand type(s) for -: 'float' and '_pytest.python_api.ApproxScalar'"
         )
         assert diag is not None
-        assert "INCOMPATIBILIDAD DE FRAMEWORK DE TEST" in diag
-        assert "pytest.approx" in diag
+        assert "DIAGNÓSTICO UNIVERSAL" in diag
+        assert "TypeError" in diag
+        assert "ApproxScalar" in diag
 
 
 def test_package_install_unblocks_failed_command():
@@ -299,3 +300,94 @@ def test_circuit_breaker_blocks_repeated_edits():
     )
     assert blocked is True
     assert "EDICIÓN REPETIDA BLOQUEADA" in msg
+
+
+def test_detect_action_cycle_period_1():
+    """Verifica detección de ciclo con periodo p=1 (repetición inmediata)."""
+    from agent.orchestrator import detect_action_cycle
+    history = ["run_command:pytest", "run_command:pytest"]
+    result = detect_action_cycle(history, max_period=3, min_repeats=2)
+    assert result is not None
+    p, pattern = result
+    assert p == 1
+    assert pattern == ["run_command:pytest"]
+
+
+def test_detect_action_cycle_period_2():
+    """Verifica detección de ciclo con periodo p=2 (alternancia de 2 herramientas)."""
+    from agent.orchestrator import detect_action_cycle
+    history = [
+        "edit_file:calc.py", "run_command:pytest",
+        "edit_file:calc.py", "run_command:pytest"
+    ]
+    result = detect_action_cycle(history, max_period=3, min_repeats=2)
+    assert result is not None
+    p, pattern = result
+    assert p == 2
+    assert pattern == ["edit_file:calc.py", "run_command:pytest"]
+
+
+def test_detect_action_cycle_period_3():
+    """Verifica detección de ciclo con periodo p=3 (tríada repetitiva)."""
+    from agent.orchestrator import detect_action_cycle
+    history = [
+        "read_file:calc.py", "edit_file:calc.py", "run_command:pytest",
+        "read_file:calc.py", "edit_file:calc.py", "run_command:pytest"
+    ]
+    result = detect_action_cycle(history, max_period=3, min_repeats=2)
+    assert result is not None
+    p, pattern = result
+    assert p == 3
+    assert pattern == ["read_file:calc.py", "edit_file:calc.py", "run_command:pytest"]
+
+
+def test_detect_action_cycle_no_cycle():
+    """Verifica que secuencias no cíclicas o con progreso no disparen falsa alarma."""
+    from agent.orchestrator import detect_action_cycle
+    history = [
+        "read_file:calc.py", "edit_file:calc.py", "run_command:pytest",
+        "write_file:test_new.py", "run_command:pytest"
+    ]
+    result = detect_action_cycle(history, max_period=3, min_repeats=2)
+    assert result is None
+
+
+def test_circuit_breaker_rule_0_triggers_on_periodic_cycle():
+    """Verifica que la Regla 0 bloquee proactivamente la repetición de un ciclo periódico de periodo 2."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    action_history = [
+        "edit_file:calc.py",
+        "run_command:pytest",
+        "edit_file:calc.py"
+    ]
+    # El agente intenta ejecutar 'run_command:pytest' por segunda vez completando el ciclo [A, B, A, B]
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "pytest"},
+        action_history=action_history,
+        files_modified_since_cmd_fail=False
+    )
+    assert blocked is True
+    assert "CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO" in msg
+    assert "Periodo 2" in msg
+
+
+def test_circuit_breaker_rule_0_allows_action_if_disk_modified():
+    """Si hubo mutación real en disco (files_modified_since_cmd_fail=True), el ciclo queda roto."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    action_history = [
+        "edit_file:calc.py",
+        "run_command:pytest",
+        "edit_file:calc.py"
+    ]
+    blocked, _ = orchestrator._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "pytest"},
+        action_history=action_history,
+        files_modified_since_cmd_fail=True
+    )
+    assert blocked is False

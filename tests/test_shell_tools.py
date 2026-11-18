@@ -35,7 +35,7 @@ def test_command_safety_filtering():
     assert safe_ok2
 
 
-def test_name_error_diagnostic():
+def test_universal_diagnostic_python():
     from tools.shell_tools import _generate_shell_diagnostics
     from pathlib import Path
 
@@ -46,22 +46,43 @@ def test_name_error_diagnostic():
     """
     hints = _generate_shell_diagnostics("pytest test_calc.py", Path.cwd(), 1, stdout, "")
     assert hints is not None
-    assert "DIAGNÓSTICO AUTOMÁTICO DE NameError" in hints
-    assert "time" in hints
+    assert "DIAGNÓSTICO UNIVERSAL DE EJECUCIÓN" in hints
     assert "test_calc.py" in hints
-    assert "import time" in hints
+    assert "12" in hints
+    assert "NameError" in hints
 
 
-def test_async_test_diagnostic():
+def test_universal_diagnostic_node_js():
     from tools.shell_tools import _generate_shell_diagnostics
     from pathlib import Path
 
-    stdout = """
-    FAILED test_app.py::test_async - Failed: async def functions are not natively supported.
-    PytestUnknownMarkWarning: Unknown pytest.mark.asyncio
+    stderr = """
+    TypeError: Cannot read properties of undefined (reading 'split')
+        at processUser (/app/src/user.js:24:18)
+        at Object.<anonymous> (/app/src/index.js:5:1)
     """
-    hints = _generate_shell_diagnostics("pytest test_app.py", Path.cwd(), 1, stdout, "")
+    hints = _generate_shell_diagnostics("node src/index.js", Path.cwd(), 1, "", stderr)
     assert hints is not None
-    assert "DIAGNÓSTICO DE TEST ASÍNCRONO EN PYTEST" in hints
-    assert "asyncio.run()" in hints
+    assert "DIAGNÓSTICO UNIVERSAL DE EJECUCIÓN" in hints
+    assert "index.js" in hints or "user.js" in hints
+    assert "TypeError" in hints
+
+
+def test_universal_diagnostic_rust():
+    from tools.shell_tools import _generate_shell_diagnostics
+    from pathlib import Path
+
+    stderr = """
+    error[E0308]: mismatched types
+      --> src/main.rs:14:5
+       |
+    14 |     "hello"
+       |     ^^^^^^^ expected `i32`, found `&str`
+    """
+    hints = _generate_shell_diagnostics("cargo check", Path.cwd(), 1, "", stderr)
+    assert hints is not None
+    assert "DIAGNÓSTICO UNIVERSAL DE EJECUCIÓN" in hints
+    assert "main.rs" in hints
+    assert "14" in hints
+    assert "mismatched types" in hints
 

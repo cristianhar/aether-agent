@@ -47,6 +47,30 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
     return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.READ_ONLY
 
 
+def detect_action_cycle(action_history: List[str], max_period: int = 3, min_repeats: int = 2) -> Optional[Tuple[int, List[str]]]:
+    """
+    Algoritmo Matemático de Detección de Ciclos Periódicos (Sliding Window Periodicity).
+    Detecta de forma genérica y agnóstica si la secuencia de acciones recientes forma un ciclo
+    periódico de longitud p in [1, max_period] repetido al menos min_repeats veces.
+    Retorna (periodo_p, ciclo_de_acciones) si se detecta un bucle, o None si no hay ciclo.
+    """
+    n = len(action_history)
+    for p in range(1, max_period + 1):
+        required_len = p * min_repeats
+        if n < required_len:
+            continue
+        window = action_history[-required_len:]
+        pattern = window[:p]
+        is_cycle = True
+        for i in range(required_len):
+            if window[i] != pattern[i % p]:
+                is_cycle = False
+                break
+        if is_cycle:
+            return p, pattern
+    return None
+
+
 class AgentOrchestrator:
     def __init__(
         self,
@@ -69,17 +93,30 @@ class AgentOrchestrator:
         self.host = host.rstrip("/")
         self.max_iterations = max_iterations
 
-        # Ingestión de reglas de proyecto (.aetherrules, CONVENTIONS.md o .cursorrules)
-        for rules_name in [".aetherrules", "CONVENTIONS.md", ".cursorrules"]:
+        # Ingestión dinámica de reglas de proyecto (.aetherrules, AGENTS.md, CONVENTIONS.md, .cursorrules)
+        loaded_rules = []
+        for rules_name in [".aetherrules", "AGENTS.md", "CONVENTIONS.md", ".cursorrules"]:
             rules_path = Path.cwd() / rules_name
-            if rules_path.exists():
+            if rules_path.is_file():
                 try:
-                    custom_rules = rules_path.read_text(encoding="utf-8").strip()
+                    custom_rules = rules_path.read_text(encoding="utf-8", errors="replace").strip()
                     if custom_rules:
-                        system_prompt += f"\n\n<custom_project_rules source='{rules_name}'>\n{custom_rules}\n</custom_project_rules>"
-                        break
+                        loaded_rules.append(f"<custom_project_rules source='{rules_name}'>\n{custom_rules}\n</custom_project_rules>")
                 except Exception:
                     pass
+
+        modular_rules_dir = Path.cwd() / ".aether" / "rules"
+        if modular_rules_dir.is_dir():
+            for r_file in modular_rules_dir.glob("*.md"):
+                try:
+                    r_text = r_file.read_text(encoding="utf-8", errors="replace").strip()
+                    if r_text:
+                        loaded_rules.append(f"<custom_project_rules source='{r_file.name}'>\n{r_text}\n</custom_project_rules>")
+                except Exception:
+                    pass
+
+        if loaded_rules:
+            system_prompt += "\n\n" + "\n\n".join(loaded_rules)
 
         self.memory = ConversationMemory(system_prompt=system_prompt)
         self.hooks = HookManager(mode="agent")
@@ -264,10 +301,12 @@ class AgentOrchestrator:
         recent_failed_tools: Optional[list] = None,
         consecutive_tool_failures: int = 0,
         executed_edits: Optional[set] = None,
+        action_history: Optional[List[str]] = None,
     ) -> Tuple[bool, str]:
         """
-        Circuit Breaker Anti-Bucle:
-        Previene bucles repetitivos donde el modelo:
+        Circuit Breaker Anti-Bucle Universal:
+        Previene bucles repetitivos de forma matemática y basada en estado:
+        0. Detección matemática universal de ciclos periódicos (periodos p=1, 2, 3) sin mutación de disco.
         1. Repite comandos de consola que ya fallaron sin haber modificado ningún archivo.
         2. Intenta ejecutar un script que contiene un SyntaxError detectado sin haberlo editado.
         3. Llama repetidamente a la misma herramienta con argumentos idénticos inmediatamente después de haber fallado.
@@ -276,6 +315,23 @@ class AgentOrchestrator:
         6. Repite exactamente la misma edición que no produjo cambios o no resolvió el fallo.
         """
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
+
+        # Regla 0: Detector Matemático Universal de Ciclos Periódicos (Periodos p=1, 2, 3)
+        if action_history and len(action_history) >= 2:
+            current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+            candidate_history = list(action_history) + [current_signature]
+            cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
+            if cycle and not files_modified_since_cmd_fail:
+                period, pattern = cycle
+                cycle_str = " ➔ ".join(pattern)
+                msg = (
+                    f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
+                    f"Has caído en una secuencia cíclica repetitiva de acciones: {cycle_str}.\n"
+                    "Esta secuencia ya se ejecutó previamente y no produjo ninguna modificación efectiva en el estado del disco.\n"
+                    "• ACCIÓN OBLIGATORIA: Rompe el ciclo inmediatamente. Si una prueba falla o una edición no surte efecto, "
+                    "revisa la causa raíz del error o reescribe el archivo afectado completamente usando 'write_file'."
+                )
+                return True, msg
 
         # Combinar failed_commands con last_failed_command para retrocompatibilidad
         active_failed_cmds = set(failed_commands or set())
@@ -392,6 +448,7 @@ class AgentOrchestrator:
         consecutive_tool_failures: int = 0
         recent_failed_tools: list = []
         executed_edits: set = set()
+        action_history: List[str] = []
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -584,7 +641,10 @@ class AgentOrchestrator:
                     recent_failed_tools=recent_failed_tools,
                     consecutive_tool_failures=consecutive_tool_failures,
                     executed_edits=executed_edits,
+                    action_history=action_history,
                 )
+                current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                action_history.append(current_action_sig)
                 if breaker_tripped:
                     total_tool_failures += 1
                     consecutive_tool_failures += 1
@@ -627,6 +687,7 @@ class AgentOrchestrator:
                     if is_success and not has_syntax_err:
                         files_modified_since_cmd_fail = True
                         failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
+                        action_history.clear()  # ¡Mutación real confirmada en disco! Limpiar ciclo previo
                         last_failed_tool_key = None
                         consecutive_edit_failures = 0
                         if target_path:

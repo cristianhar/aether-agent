@@ -5,8 +5,19 @@ Diseñadas para maximizar precisión y minimizar consumo de tokens de contexto.
 
 import os
 import shutil
+import hashlib
 from pathlib import Path
 from typing import Optional
+
+
+def calculate_file_hash(path: Path) -> Optional[str]:
+    """Calcula la huella criptográfica SHA-256 de un archivo en disco."""
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except Exception:
+        return None
 
 
 def get_absolute_path(path_str: str, base_dir: Optional[Path] = None) -> Path:
@@ -227,18 +238,21 @@ def edit_file(path: str, target: str, replacement: str) -> str:
             "Incluye más líneas de contexto circundante para identificar únicamente el bloque a modificar."
         )
 
+    hash_before = calculate_file_hash(file_path)
+
     if target_normalized == replacement_normalized:
         return (
-            f"Error / Sin cambios: El bloque 'replacement' es IDÉNTICO al bloque 'target'. "
+            f"Error / Sin cambios (Idéntico): El bloque 'replacement' es IDÉNTICO al bloque 'target'. "
             f"No se realizó ninguna modificación en el archivo '{path}'. "
             "Debes proporcionar un código nuevo que realmente corrija el error existente."
         )
 
     new_content = content_normalized.replace(target_normalized, replacement_normalized, 1)
 
-    if new_content == content_normalized:
+    hash_new = hashlib.sha256(new_content.encode("utf-8")).hexdigest()
+    if hash_before and hash_before == hash_new:
         return (
-            f"Error / Sin cambios: La sustitución no produjo ningún cambio efectivo en el archivo '{path}'. "
+            f"Error / Sin cambios (SHA256 idéntico): La sustitución no produjo ningún cambio efectivo en '{path}'. "
             "Revisa el bloque 'target' e intenta con una edición diferente o usa 'write_file'."
         )
 
