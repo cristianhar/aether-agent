@@ -334,6 +334,7 @@ class AgentOrchestrator:
         executed_edits: Optional[set] = None,
         action_history: Optional[List[str]] = None,
         plan_completed: bool = False,
+        last_test_exit_code: Optional[int] = None,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle Universal:
@@ -403,10 +404,21 @@ class AgentOrchestrator:
                     if not files_modified_since_cmd_fail or (period == 1 and action_history and action_history[-1] == current_signature):
                         cycle_str = " ➔ ".join(pattern)
                         if tool_name in ["run_command", "run_tests"]:
-                            cycle_hint = (
-                                "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
-                                "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
-                            )
+                            if last_test_exit_code == 0:
+                                cycle_hint = (
+                                    "• Las pruebas ya pasaron exitosamente (Exit code 0): tu verificación ha CONCLUIDO CON ÉXITO. "
+                                    "NO vuelvas a ejecutar el comando. Concluye el turno e informa al usuario en tu respuesta final."
+                                )
+                            elif last_test_exit_code is not None and last_test_exit_code != 0:
+                                cycle_hint = (
+                                    "• Las pruebas FALLARON (Exit code != 0). NO puedes dar la tarea por concluida ni repetir el comando sin cambios.\n"
+                                    "• ACCIÓN OBLIGATORIA: Analiza el Traceback o fallo reportado arriba y modifica el código fuente o el archivo de pruebas usando 'write_file' o 'edit_file'."
+                                )
+                            else:
+                                cycle_hint = (
+                                    "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
+                                    "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
+                                )
                         else:
                             target_file_obj = Path(target_path_str) if target_path_str else None
                             if target_file_obj and target_file_obj.suffix == ".py":
@@ -436,16 +448,17 @@ class AgentOrchestrator:
         if last_failed_command:
             active_failed_cmds.add(last_failed_command.strip().lower())
 
-        # Regla 1: run_command que ya falló previamente sin haber modificado archivos
-        if tool_name == "run_command":
-            cmd_norm = args.get("command", "").strip().lower()
+        # Regla 1: run_command / run_tests que ya falló previamente sin haber modificado archivos
+        if tool_name in ["run_command", "run_tests"]:
+            cmd_norm = args.get("command", "").strip().lower() if tool_name == "run_command" else f"pytest {args.get('test_target', '.')}".strip().lower()
             if active_failed_cmds and cmd_norm in active_failed_cmds and not files_modified_since_cmd_fail:
                 if consecutive_edit_failures >= 1:
                     action_hint = "• ACCIÓN OBLIGATORIA: Tus intentos de edición no han modificado el archivo exitosamente. Usa 'read_file' para inspeccionar el archivo o reescríbelo con 'write_file'. NO vuelvas a ejecutar el mismo comando sin cambios en disco."
                 else:
                     action_hint = "• ACCIÓN OBLIGATORIA: Si aún no has corregido el código, usa 'read_file' para inspeccionarlo, 'edit_file' para modificar el bloque exacto, o 'write_file' para reescribirlo. Si la verificación ya concluyó con éxito, concluye el turno e informa al usuario en tu respuesta final para que lo ejecute en su propia terminal."
+                target_cmd_display = args.get("command") or f"run_tests({args.get('test_target', '')})"
                 msg = (
-                    f"⛔ [CIRCUIT BREAKER]: El comando '{args.get('command')}' ya falló previamente y NO has modificado ningún archivo en el disco desde entonces.\n"
+                    f"⛔ [CIRCUIT BREAKER]: El comando de pruebas '{target_cmd_display}' ya falló previamente y NO has modificado ningún archivo en el disco desde entonces.\n"
                     "• Volver a ejecutar el mismo comando sin cambios en disco producirá exactamente el mismo error.\n"
                     "• Si faltaba una librería o paquete, instálala usando 'pip install <libreria>'.\n"
                     f"{action_hint}"
@@ -561,6 +574,7 @@ class AgentOrchestrator:
         plan_completed_in_turn: bool = False
         proactive_prompts_sent: int = 0
         tests_executed_in_turn: bool = False
+        last_test_exit_code: Optional[int] = None
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -717,6 +731,17 @@ class AgentOrchestrator:
                     self.memory.add_user_message(content=plan_guard_hint)
                     continue
 
+                # Guardián de Pruebas Fallidas: Nunca permitir dar por completada la tarea si las pruebas ejecutadas fallaron
+                if last_test_exit_code is not None and last_test_exit_code != 0 and iteration < self.max_iterations - 1:
+                    self.memory.add_assistant_message(content=content)
+                    test_failed_guard = (
+                        "[SISTEMA AETHER - CORRECCIÓN DE PRUEBAS OBLIGATORIA]: No puedes dar la tarea por concluida porque las pruebas unitarias FALLARON (Exit code != 0).\n"
+                        "• Revisa los errores y fallos reportados en la salida de pruebas de arriba.\n"
+                        "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE ser 'write_file' o 'edit_file' para corregir los errores en el código fuente o en los tests hasta que pytest pase al 100%."
+                    )
+                    self.memory.add_user_message(content=test_failed_guard)
+                    continue
+
                 # Guardián de Proactividad Autónoma: Evitar detenciones prematuras o preguntas pasivas
                 premature_question_markers = [
                     "¿deseas que", "¿quieres que", "¿te gustaría que",
@@ -868,6 +893,7 @@ class AgentOrchestrator:
                     executed_edits=executed_edits,
                     action_history=action_history,
                     plan_completed=plan_completed_in_turn,
+                    last_test_exit_code=last_test_exit_code,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
@@ -897,7 +923,7 @@ class AgentOrchestrator:
                 tool_result = self.hooks.post_tool_use(tool_name, args, tool_result)
 
                 # 7. Evaluación del éxito del resultado
-                if tool_name == "run_command":
+                if tool_name in ["run_command", "run_tests"]:
                     is_cancelled = ("operation cancelled" in tool_result.lower()) or ("operation aborted" in tool_result.lower())
                     is_cmd_success = ("Código de salida: 0" in tool_result) and not tool_result.startswith("Error:") and not is_cancelled
                     is_success = is_cmd_success
@@ -952,19 +978,18 @@ class AgentOrchestrator:
                     last_assertion_error = None
                     assertion_error_repeat_count = 0
 
-                elif tool_name in ["run_tests"]:
-                    tests_executed_in_turn = True
-
-                elif tool_name == "run_command":
-                    cmd_norm = args.get("command", "").strip().lower()
-                    if any(t_kw in cmd_norm for t_kw in ["pytest", "test", "py_compile", "unittest"]):
+                elif tool_name in ["run_command", "run_tests"]:
+                    cmd_norm = args.get("command", "").strip().lower() if tool_name == "run_command" else f"pytest {args.get('test_target', '.')}".strip().lower()
+                    if tool_name == "run_tests" or any(t_kw in cmd_norm for t_kw in ["pytest", "test", "py_compile", "unittest"]):
                         tests_executed_in_turn = True
+                        last_test_exit_code = 0 if is_success else 1
+
                     files_modified_since_cmd_fail = False
                     if not is_success:
                         failed_commands.add(cmd_norm)
                         last_failed_tool_key = tool_call_key
                         if "syntaxerror" in tool_result.lower():
-                            for part in args.get("command", "").split():
+                            for part in (args.get("command") or args.get("test_target") or "").split():
                                 if part.endswith(".py"):
                                     known_syntax_error_files.add(part)
                                     known_syntax_error_files.add(Path(part).name)

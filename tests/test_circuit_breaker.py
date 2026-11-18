@@ -445,3 +445,50 @@ def test_circuit_breaker_completion_guard_blocks_actions_after_plan_complete():
     assert "COMPLETION GUARD" in msg
 
 
+def test_circuit_breaker_rule_1_blocks_run_tests_without_disk_change():
+    """Verifica que run_tests quede protegido bajo la Regla 1 si ya falló previamente sin modificaciones en disco."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="run_tests",
+        args={"test_target": "test_kv.py"},
+        failed_commands={"pytest test_kv.py"},
+        files_modified_since_cmd_fail=False
+    )
+    assert blocked is True
+    assert "CIRCUIT BREAKER" in msg
+    assert "ya falló previamente" in msg
+
+
+def test_circuit_breaker_cycle_hint_distinguishes_test_success_vs_failure():
+    """Verifica que el mensaje del ciclo periódico indique claramente si las pruebas fallaron o tuvieron éxito."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    # Caso 1: Pruebas fallaron (exit code 1)
+    blocked, msg_fail = orchestrator._check_circuit_breaker(
+        tool_name="run_tests",
+        args={},
+        action_history=["run_tests:"],
+        files_modified_since_cmd_fail=False,
+        last_test_exit_code=1
+    )
+    assert blocked is True
+    assert "Las pruebas FALLARON" in msg_fail
+    assert "NO puedes dar la tarea por concluida" in msg_fail
+
+    # Caso 2: Pruebas pasaron (exit code 0)
+    blocked, msg_ok = orchestrator._check_circuit_breaker(
+        tool_name="run_tests",
+        args={},
+        action_history=["run_tests:"],
+        files_modified_since_cmd_fail=False,
+        last_test_exit_code=0
+    )
+    assert blocked is True
+    assert "Las pruebas ya pasaron exitosamente (Exit code 0)" in msg_ok
+    assert "CONCLUIDO CON ÉXITO" in msg_ok
+
+
+

@@ -148,3 +148,17 @@ def test_edit_file_on_nonexistent_file_guides_write_file(tmp_path):
     assert "write_file" in res
 
 
+def test_auto_heal_test_class_aliasing(tmp_path):
+    """Verifica que si test_kv_store.py importa KeyValueStore pero kv_store.py define KVStore, se auto-genere el alias."""
+    from tools.file_tools import auto_heal_missing_imports
+    src = tmp_path / "kv_store.py"
+    src.write_text("class KVStore:\n    pass\n", encoding="utf-8")
+
+    test_file = tmp_path / "test_kv_store.py"
+    test_content = "from kv_store import KeyValueStore\n\ndef test_kv():\n    assert KeyValueStore is not None\n"
+
+    healed = auto_heal_missing_imports(test_file, test_content)
+    assert "from kv_store import KVStore as KeyValueStore" in healed
+
+
+

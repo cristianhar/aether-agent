@@ -8,6 +8,7 @@ import os
 import shutil
 import hashlib
 from pathlib import Path
+import re
 from typing import Optional
 
 
@@ -144,7 +145,30 @@ def auto_heal_missing_imports(file_path: Path, content: str) -> str:
             needed_imports.append(import_stmt)
 
     if needed_imports:
-        return "".join(needed_imports) + content
+        content = "".join(needed_imports) + content
+
+    # Auto-sanación de discrepancias de nombres entre archivo de pruebas y módulo fuente
+    # Ej: test_kv_store.py importa KeyValueStore cuando kv_store.py define KVStore
+    if file_path.name.startswith("test_"):
+        sibling_stem = file_path.stem[5:]
+        sibling_path = file_path.parent / f"{sibling_stem}.py"
+        if sibling_path.is_file():
+            try:
+                s_tree = ast.parse(sibling_path.read_text(encoding="utf-8", errors="replace"))
+                s_classes = [n.name for n in ast.walk(s_tree) if isinstance(n, ast.ClassDef)]
+                if len(s_classes) == 1:
+                    target_class = s_classes[0]
+                    pattern = rf"from\s+{sibling_stem}\s+import\s+([A-Za-z0-9_]+)"
+                    for m in re.finditer(pattern, content):
+                        imported_name = m.group(1)
+                        if imported_name != target_class and imported_name != "*":
+                            content = content.replace(
+                                m.group(0),
+                                f"from {sibling_stem} import {target_class} as {imported_name}"
+                            )
+            except Exception:
+                pass
+
     return content
 
 
