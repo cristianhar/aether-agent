@@ -3,6 +3,7 @@ Herramientas atómicas para manipulación de archivos y código.
 Diseñadas para maximizar precisión y minimizar consumo de tokens de contexto.
 """
 
+import ast
 import os
 import shutil
 import hashlib
@@ -90,6 +91,63 @@ def check_syntax(file_path: Path, new_content: str) -> Optional[str]:
     return None
 
 
+def auto_heal_missing_imports(file_path: Path, content: str) -> str:
+    """
+    Auto-Sanador Estático de Importaciones:
+    Previene NameError en tiempo de ejecución inyectando automáticamente
+    módulos estándar y anotaciones de tipos omitidos comúnmente por LLMs locales.
+    """
+    if file_path.suffix != ".py":
+        return content
+
+    try:
+        tree = ast.parse(content)
+    except Exception:
+        return content
+
+    imported = set()
+    defined = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for n in node.names:
+                imported.add(n.asname or n.name)
+        elif isinstance(node, ast.ImportFrom):
+            for n in node.names:
+                imported.add(n.asname or n.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    defined.add(target.id)
+
+    used_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            used_names.add(node.id)
+
+    needed_imports = []
+    typing_keys = {"Optional", "Union", "Any", "Callable", "Dict", "List", "Tuple"}
+    if typing_keys.intersection(used_names) - imported - defined:
+        needed_imports.append("from typing import Any, Callable, Dict, List, Optional, Tuple, Union\n")
+
+    std_map = {
+        "time": "import time\n",
+        "math": "import math\n",
+        "json": "import json\n",
+        "os": "import os\n",
+        "sys": "import sys\n",
+        "re": "import re\n",
+    }
+    for mod_name, import_stmt in std_map.items():
+        if mod_name in used_names and mod_name not in imported and mod_name not in defined:
+            needed_imports.append(import_stmt)
+
+    if needed_imports:
+        return "".join(needed_imports) + content
+    return content
+
+
 def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
     """
     Superpoder: Fuzzy Matcher inteligente.
@@ -162,6 +220,7 @@ def write_file(path: str, content: str) -> str:
     """
     file_path = get_absolute_path(path)
     try:
+        content = auto_heal_missing_imports(file_path, content)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -299,6 +358,7 @@ def edit_file(
             "Revisa el bloque 'target' e intenta con una edición diferente o usa 'write_file'."
         )
 
+    new_content = auto_heal_missing_imports(file_path, new_content)
     if "\r\n" in file_content:
         new_content = new_content.replace("\n", "\r\n")
 
