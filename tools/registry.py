@@ -807,3 +807,27 @@ def execute_tool(name: str, arguments: Any) -> str:
     except Exception as e:
         return f"Error durante la ejecución de la herramienta '{name}': {str(e)}"
 
+
+def execute_tools_parallel(calls: List[tuple], max_workers: int = 4) -> List[str]:
+    """
+    Ejecuta un lote de herramientas pasivas concurrentemente usando un ThreadPoolExecutor.
+    Inspirado en la ejecución concurrente de Antigravity para reducir la latencia de lectura multi-archivo.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    if not calls:
+        return []
+    if len(calls) == 1:
+        name, args = calls[0]
+        return [execute_tool(name, args)]
+
+    results: List[Any] = [None] * len(calls)
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(calls))) as executor:
+        futures = {
+            executor.submit(execute_tool, name, args): idx
+            for idx, (name, args) in enumerate(calls)
+        }
+        for f in futures:
+            idx = futures[f]
+            results[idx] = f.result()
+    return [str(r) for r in results]
+

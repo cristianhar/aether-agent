@@ -607,8 +607,34 @@ class AgentOrchestrator:
             self.memory.add_assistant_message(content=content, tool_calls=tool_calls)
             self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content, tool_calls=tool_calls)
 
-            # Procesar cada herramienta solicitada
+            # Optimización de concurrencia Antigravity: Si todas las herramientas del turno son de solo lectura,
+            # pre-ejecutar en paralelo con ThreadPoolExecutor para reducir la latencia acumulada
+            parallel_results: Dict[int, str] = {}
+            parsed_calls = []
             for tc in tool_calls:
+                func_data = tc.get("function", {})
+                t_name = func_data.get("name", "")
+                t_args = func_data.get("arguments", {})
+                if isinstance(t_args, str):
+                    try:
+                        t_args = json.loads(t_args)
+                    except Exception:
+                        t_args = {}
+                parsed_calls.append((t_name, t_args))
+
+            all_read_only = len(tool_calls) > 1 and all(
+                get_tool_metadata(t_name)[1] == PermissionLevel.READ_ONLY
+                for t_name, _ in parsed_calls
+            )
+
+            if all_read_only:
+                from tools.registry import execute_tools_parallel
+                raw_results = execute_tools_parallel(parsed_calls, max_workers=min(4, len(parsed_calls)))
+                for idx, res in enumerate(raw_results):
+                    parallel_results[idx] = res
+
+            # Procesar cada herramienta solicitada
+            for idx, tc in enumerate(tool_calls):
                 if cancellation_token and cancellation_token.is_cancelled:
                     self.set_state(AgentState.CANCELLED)
                     return cancellation_token.reason or "Operación cancelada por el usuario."
@@ -704,9 +730,12 @@ class AgentOrchestrator:
                     current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
                     action_history.append(current_action_sig)
 
-                # 5. Ejecución de la herramienta con cronometraje
+                # 5. Ejecución de la herramienta con cronometraje (usando resultado pre-ejecutado si fue en paralelo)
                 tool_start = time.perf_counter()
-                tool_result = execute_tool(tool_name, args)
+                if idx in parallel_results:
+                    tool_result = parallel_results[idx]
+                else:
+                    tool_result = execute_tool(tool_name, args)
                 tool_dur_ms = (time.perf_counter() - tool_start) * 1000.0
 
                 # 6. Post-Tool Hook

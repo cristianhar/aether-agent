@@ -43,3 +43,15 @@ def test_get_project_instructions():
         assert "Reglas de Proyecto: AGENTS.md" in res
         assert "Usar tipado estricto en Python" in res
         assert "<project_instructions" in res
+
+
+def test_execute_tools_parallel():
+    from tools.registry import execute_tools_parallel
+    calls = [
+        ("read_file", {"path": "main.py", "start_line": 1, "end_line": 5}),
+        ("list_directory", {"path": ".", "max_depth": 1}),
+    ]
+    results = execute_tools_parallel(calls, max_workers=2)
+    assert len(results) == 2
+    assert "main.py" in results[0]
+    assert "main.py" in results[1]
