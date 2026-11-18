@@ -28,21 +28,21 @@ from tools.registry import TOOLS_SCHEMA, execute_tool
 def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
     """Clasifica cada herramienta según su categoría de riesgo y permisos."""
     if name in [
-        "read_file", "search_codebase", "grep_search", "grep", "list_directory", "get_file_outline",
+        "read_file", "cat", "view_file", "search_codebase", "grep_search", "grep", "list_directory", "get_file_outline",
         "get_repo_map", "get_diagnostics", "get_process_status",
         "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
         "list_mcp_tools", "delegate_research", "get_plan", "search_memory", "list_memories"
     ]:
-        category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "grep_search", "grep", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
+        category = ToolCategory.FILESYSTEM if name in ["read_file", "cat", "view_file", "search_codebase", "grep_search", "grep", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
 
     if name in ["remember_fact", "update_plan"]:
         return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.WORKSPACE_WRITE
 
-    if name in ["write_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
+    if name in ["write_file", "create_file", "new_file", "save_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
         return ToolCategory.FILESYSTEM, PermissionLevel.WORKSPACE_WRITE
 
-    if name in ["run_command", "run_tests", "start_background_process", "cancel_process", "call_mcp_tool"]:
+    if name in ["run_command", "exec", "execute_command", "bash", "sh", "terminal", "run_tests", "pytest", "test", "test_runner", "start_background_process", "cancel_process", "call_mcp_tool"]:
         return ToolCategory.EXECUTION, PermissionLevel.COMMAND_EXECUTE
 
     if name in ["create_checkpoint", "undo_checkpoint", "safe_checkpoint", "safe_undo_checkpoint", "get_git_diff", "get_git_status"]:
@@ -86,6 +86,8 @@ def extract_test_failure_summary(tool_result: str) -> str:
         if (
             s.startswith("E   ")
             or s.startswith("FAILED ")
+            or s.startswith(">   ")
+            or re.search(r"\.py:\d+:", s)
             or any(s.startswith(f"{ex}:") or f" {ex}:" in s for ex in [
                 "AssertionError", "AttributeError", "ImportError", "TypeError",
                 "NameError", "SyntaxError", "ValueError", "KeyError", "IndexError"
@@ -93,7 +95,7 @@ def extract_test_failure_summary(tool_result: str) -> str:
         ):
             failures.append(s)
     if failures:
-        return "\n".join(failures[:10])
+        return "\n".join(failures[:12])
     non_empty = [l.strip() for l in lines if l.strip()]
     return "\n".join(non_empty[-6:])
 
