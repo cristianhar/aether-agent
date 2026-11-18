@@ -414,11 +414,10 @@ def edit_file(
 
     # Si target fue omitido (target is None):
     if target is None:
-        # Si el archivo actual está completamente vacío
         if not file_content.strip():
             return write_file(path=path, content=rep_text)
 
-        # 1. Detección automática de bloque de función o clase a reemplazar por firma
+        # 1. Detección automática de bloque de función o clase a reemplazar
         rep_lines_nonempty = [l.strip() for l in rep_text.splitlines() if l.strip()]
         candidate_target = None
         if rep_lines_nonempty and any(rep_lines_nonempty[0].startswith(kw) for kw in ["def ", "class ", "async def "]):

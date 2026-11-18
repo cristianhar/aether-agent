@@ -18,7 +18,9 @@ from rich.table import Table
 from rich.rule import Rule
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory, InMemoryHistory
+from prompt_toolkit.shortcuts import CompleteStyle
 
 from agent.orchestrator import AgentOrchestrator
 from agent.checkpoints import SafeCheckpointManager
@@ -369,22 +371,25 @@ def main():
             history=cli_history,
             completer=cli_completer,
             complete_while_typing=False,
+            reserve_space_for_menu=0,
+            complete_style=CompleteStyle.READLINE_LIKE,
         )
     except Exception:
         session = None
 
     while True:
+        console.print()
         try:
             if session:
-                user_input = session.prompt("\nAETHER ❯ ").strip()
+                user_input = session.prompt(HTML("<b><ansicyan>AETHER ❯ </ansicyan></b>")).strip()
             else:
-                user_input = input("\nAETHER ❯ ").strip()
+                user_input = input("AETHER ❯ ").strip()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
             break
         except Exception:
             try:
-                user_input = input("\nAETHER ❯ ").strip()
+                user_input = input("AETHER ❯ ").strip()
             except (KeyboardInterrupt, EOFError):
                 console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
                 break
@@ -392,13 +397,15 @@ def main():
         if not user_input:
             continue
 
+        cmd = user_input.split()[0].lower() if user_input.startswith("/") else ""
+
         # Comandos especiales
-        if user_input in ["/exit", "/quit"]:
+        if cmd in ["/exit", "/quit"]:
             console.print("[dim]Sesión finalizada. ¡Hasta pronto![/dim]")
             break
 
-        elif user_input.startswith("/cd"):
-            target_dir = user_input[len("/cd"):].strip()
+        elif cmd == "/cd":
+            target_dir = user_input[len(user_input.split()[0]):].strip()
             if not target_dir:
                 console.print(f"[bold yellow]Directorio actual:[/] {Path.cwd()}")
             else:
@@ -414,17 +421,17 @@ def main():
                     console.print(f"[bold red]Error:[/] La ruta '{target_dir}' no existe o no es un directorio válido.")
             continue
 
-        elif user_input == "/map":
+        elif cmd == "/map":
             repo_map = generate_repo_map()
             console.print(Panel(repo_map, title="[bold cyan]📦 Arquitectura del Repositorio (Repo-Map)[/bold cyan]", border_style="cyan", box=box.ROUNDED))
             continue
 
-        elif user_input.startswith("/test"):
-            test_target = user_input[len("/test"):].strip()
-            cmd = ["pytest", "-v"] if not test_target else ["pytest", "-v", test_target]
-            console.print(f"[bold yellow]🧪 Ejecutando pruebas con {' '.join(cmd)}...[/bold yellow]")
+        elif cmd == "/test":
+            test_target = user_input[len(user_input.split()[0]):].strip()
+            cmd_args = ["pytest", "-v"] if not test_target else ["pytest", "-v", test_target]
+            console.print(f"[bold yellow]🧪 Ejecutando pruebas con {' '.join(cmd_args)}...[/bold yellow]")
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+                proc = subprocess.run(cmd_args, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 out = proc.stdout.strip() or proc.stderr.strip()
                 color = "green" if proc.returncode == 0 else "red"
                 status_title = "✅ Tests Pasaron" if proc.returncode == 0 else "❌ Tests Fallaron"
@@ -441,8 +448,8 @@ def main():
                 console.print("[bold red]No se encontró pytest instalado en el entorno. Ejecuta 'pip install pytest'.[/bold red]")
             continue
 
-        elif user_input.startswith("/commit"):
-            commit_msg = user_input[len("/commit"):].strip()
+        elif cmd == "/commit":
+            commit_msg = user_input[len(user_input.split()[0]):].strip()
             diff_text = get_git_diff()
             if not diff_text or "No hay diferencias" in diff_text:
                 console.print("[yellow]No hay modificaciones pendientes de commitear en el proyecto.[/yellow]")
@@ -459,8 +466,8 @@ def main():
                 console.print(f"[bold red]Error en commit:[/] {res.stderr.strip() or res.stdout.strip()}")
             continue
 
-        elif user_input.startswith("/export"):
-            filename = user_input[len("/export"):].strip() or f"aether_sesion_{Path.cwd().name}.md"
+        elif cmd == "/export":
+            filename = user_input[len(user_input.split()[0]):].strip() or f"aether_sesion_{Path.cwd().name}.md"
             msgs = orchestrator.memory.get_messages()
             md_lines = [f"# Sesión AETHER IDE — {Path.cwd().name}\n"]
             for m in msgs:
@@ -473,12 +480,12 @@ def main():
             console.print(f"[bold green]✅ Sesión exportada exitosamente a:[/] {out_path}")
             continue
 
-        elif user_input == "/diff":
+        elif cmd == "/diff":
             diff = get_git_diff()
             console.print(Panel(Syntax(diff, "diff", theme="monokai", line_numbers=True), title="Git Diff Actual", box=box.ROUNDED))
             continue
 
-        elif user_input == "/status":
+        elif cmd == "/status":
             git_st = get_git_status()
             token_count = orchestrator.memory.estimate_tokens()
             msg_count = len(orchestrator.memory.get_messages())
@@ -494,7 +501,7 @@ def main():
             console.print(Panel(status_report, title="[bold green]📊 Estado del Sistema AETHER[/bold green]", border_style="green", box=box.ROUNDED))
             continue
 
-        elif user_input == "/sessions":
+        elif cmd in ["/sessions", "/session"]:
             sm = SessionManager()
             sessions = sm.list_sessions(limit=10)
             if not sessions:
@@ -507,8 +514,8 @@ def main():
                 console.print(Panel("\n".join(lines), title="🗄️ Historial de Sesiones Persistentes", border_style="cyan", box=box.ROUNDED))
             continue
 
-        elif user_input.startswith("/resume"):
-            target_id = user_input[len("/resume"):].strip()
+        elif cmd == "/resume":
+            target_id = user_input[len(user_input.split()[0]):].strip()
             if not target_id:
                 console.print("[bold red]Uso:[/] /resume <session_id>")
                 continue
@@ -522,7 +529,7 @@ def main():
                 console.print(f"[bold green]✅ Sesión '{target_id}' reanudada con {len(past_msgs)} mensajes cargados en contexto.[/bold green]")
             continue
 
-        elif user_input == "/telemetry":
+        elif cmd == "/telemetry":
             tlog = TelemetryLogger()
             summary = tlog.get_summary()
             telem_text = f"""[bold]Turnos Totales de Agente:[/] {summary['total_turns']}
@@ -532,18 +539,18 @@ def main():
             console.print(Panel(telem_text, title="📈 Telemetría y Rendimiento de AETHER", border_style="magenta", box=box.ROUNDED))
             continue
 
-        elif user_input == "/undo":
+        elif cmd == "/undo":
             res = undo_checkpoint()
             console.print(f"[bold yellow]{res}[/bold yellow]")
             continue
 
-        elif user_input.startswith("/checkpoint"):
-            msg = user_input[len("/checkpoint"):].strip() or "Manual checkpoint"
+        elif cmd in ["/checkpoint", "/checkpoints"]:
+            msg = user_input[len(user_input.split()[0]):].strip() or "Manual checkpoint"
             res = create_checkpoint(msg)
             console.print(f"[bold green]{res}[/bold green]")
             continue
 
-        elif user_input.startswith("/model"):
+        elif cmd in ["/model", "/models"]:
             parts = user_input.split()
             if len(parts) > 1:
                 model = parts[1]
@@ -553,7 +560,7 @@ def main():
                 console.print(f"[bold yellow]Modelo actual: {orchestrator.model}[/bold yellow]")
             continue
 
-        elif user_input.startswith("/mode"):
+        elif cmd == "/mode":
             parts = user_input.split()
             if len(parts) > 1:
                 target_mode = parts[1].lower().strip()
@@ -573,8 +580,8 @@ def main():
                 console.print(f"[bold yellow]Modo actual:[/] {orchestrator.hooks.mode.upper()}")
             continue
 
-        elif user_input.startswith("/plan"):
-            plan_goal = user_input[len("/plan"):].strip()
+        elif cmd == "/plan":
+            plan_goal = user_input[len(user_input.split()[0]):].strip()
             orchestrator.hooks.set_mode("plan")
             console.print("[bold cyan]🧭 Modo PLAN activado (Planificación Arquitectónica).[/bold cyan]")
 
@@ -601,7 +608,7 @@ def main():
                 render_response(plan_result)
             continue
 
-        elif user_input == "/voice":
+        elif cmd == "/voice":
             voice_info = """
 ### 🎙️ Integración con Asistente de Voz Local (Hands-Free Coding)
 Para controlar tu desarrollo por voz en paralelo con AETHER:
@@ -613,12 +620,12 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
             console.print(Panel(Markdown(voice_info), title="🎙️ Voice Assistant Integration", border_style="cyan", box=box.ROUNDED))
             continue
 
-        elif user_input == "/clear":
+        elif cmd == "/clear":
             orchestrator.memory.clear()
             console.print("[bold cyan]Historial y contexto reiniciados.[/bold cyan]")
             continue
 
-        elif user_input == "/compact":
+        elif cmd == "/compact":
             tokens_before = orchestrator.memory.estimate_tokens()
             orchestrator.memory.compact_memory()
             tokens_after = orchestrator.memory.estimate_tokens()
@@ -626,8 +633,8 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
             console.print(f"[bold green]✅ Contexto compactado exitosamente:[/] {tokens_before} ➔ {tokens_after} tokens (~{saved} tokens liberados en VRAM).")
             continue
 
-        elif user_input.startswith("/memory"):
-            mem_arg = user_input[len("/memory"):].strip()
+        elif cmd in ["/memory", "/memories"]:
+            mem_arg = user_input[len(user_input.split()[0]):].strip()
             from tools.agent_tools import list_memories, search_memory
             if not mem_arg:
                 res = list_memories()
@@ -641,7 +648,7 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
                 console.print(Panel(res, title=f"[bold cyan]🔍 Búsqueda Semántica: '{mem_arg}'[/bold cyan]", border_style="cyan", box=box.ROUNDED))
             continue
 
-        elif user_input == "/help":
+        elif cmd == "/help":
             help_table = Table(title="🛠️  Comandos Especiales de AETHER IDE", box=box.ROUNDED, border_style="cyan", header_style="bold cyan")
             help_table.add_column("Comando", style="bold yellow", no_wrap=True)
             help_table.add_column("Descripción", style="default")
@@ -666,6 +673,11 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
             help_table.add_row("/clear", "Limpia el historial de conversación para liberar memoria de contexto")
             help_table.add_row("/exit", "Cierra la sesión de AETHER")
             console.print(help_table)
+            continue
+
+        # Manejo de comandos no reconocidos que inician con '/'
+        elif user_input.startswith("/"):
+            console.print(f"[bold red]❌ Comando no reconocido:[/] '{cmd}'. Escribe [bold cyan]/help[/bold cyan] para ver la lista de comandos disponibles.")
             continue
 
         # Validar conexión antes de enviar tarea
