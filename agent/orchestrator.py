@@ -314,10 +314,17 @@ class AgentOrchestrator:
         5. Cae en un bucle alternante oscilante (ping-pong) entre dos herramientas diferentes.
         6. Repite exactamente la misma edición que no produjo cambios o no resolvió el fallo.
         """
+        passive_tools = {
+            "read_file", "list_directory", "search_codebase", "get_file_outline",
+            "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
+            "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
+        }
+
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
         # Regla 0: Detector Matemático Universal de Ciclos Periódicos (Periodos p=1, 2, 3)
-        if action_history and len(action_history) >= 2:
+        # Solo aplica a herramientas activas de mutación o ejecución (no a inspección pasiva)
+        if tool_name not in passive_tools and action_history and len(action_history) >= 2:
             current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
             candidate_history = list(action_history) + [current_signature]
             cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
@@ -643,8 +650,13 @@ class AgentOrchestrator:
                     executed_edits=executed_edits,
                     action_history=action_history,
                 )
-                current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
-                action_history.append(current_action_sig)
+                if tool_name not in [
+                    "read_file", "list_directory", "search_codebase", "get_file_outline",
+                    "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
+                    "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
+                ]:
+                    current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                    action_history.append(current_action_sig)
                 if breaker_tripped:
                     total_tool_failures += 1
                     consecutive_tool_failures += 1

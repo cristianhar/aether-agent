@@ -115,3 +115,18 @@ def test_something():
     assert "run_sync_task" in content
 
 
+def test_edit_file_preserves_indentation_on_unindented_target(tmp_path):
+    """Verifica que si el target y replacement vienen sin indentación, se conserve la sangría del bloque original en disco."""
+    f = tmp_path / "calc.py"
+    original = "class Calculator:\n    def get_result(self):\n        return 42\n"
+    f.write_text(original, encoding="utf-8")
+
+    # Target y replacement sin los 8 espacios de sangría
+    res = edit_file(str(f), target="return 42", replacement="return 100")
+    assert "Éxito" in res
+
+    new_content = f.read_text(encoding="utf-8")
+    # Debe preservar los 8 espacios de indentación para no romper la sintaxis de Python
+    assert "        return 100\n" in new_content
+
+

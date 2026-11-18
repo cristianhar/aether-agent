@@ -115,7 +115,12 @@ def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
             matches.append("\n".join(window))
 
     if len(matches) == 1:
-        return matches[0], " (aplicado mediante coincidencia inteligente de espacios)"
+        matched_str = matches[0]
+        w_lines = matched_str.split("\n")
+        w_indent = len(w_lines[0]) - len(w_lines[0].lstrip())
+        t_indent = len(target_lines[0]) - len(target_lines[0].lstrip())
+        delta = max(0, w_indent - t_indent)
+        return matched_str, " (aplicado mediante coincidencia inteligente de espacios)", delta
 
     # Comparación 3: Coincidencia difusa profunda con difflib (para omisiones de palabras clave como 'async' o typos leves)
     if not matches and m >= 2:
@@ -137,7 +142,11 @@ def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
 
         if len(matches) == 1 and best_window and best_ratio >= 0.85:
             pct = int(best_ratio * 100)
-            return best_window, f" (aplicado mediante coincidencia difusa inteligente al {pct}%)"
+            w_lines = best_window.split("\n")
+            w_indent = len(w_lines[0]) - len(w_lines[0].lstrip())
+            t_indent = len(target_lines[0]) - len(target_lines[0].lstrip())
+            delta = max(0, w_indent - t_indent)
+            return best_window, f" (aplicado mediante coincidencia difusa inteligente al {pct}%)", delta
 
     return None
 
@@ -198,11 +207,12 @@ def edit_file(path: str, target: str, replacement: str) -> str:
 
     count = content_normalized.count(target_normalized)
     note = ""
+    indent_delta = 0
 
     if count == 0:
         fuzzy_match = find_fuzzy_target(content_normalized, target_normalized)
         if fuzzy_match:
-            target_normalized, note = fuzzy_match
+            target_normalized, note, indent_delta = fuzzy_match
             count = 1
         else:
             error_signatures = [
@@ -239,6 +249,14 @@ def edit_file(path: str, target: str, replacement: str) -> str:
         )
 
     hash_before = calculate_file_hash(file_path)
+
+    if indent_delta > 0:
+        rep_lines = replacement_normalized.split("\n")
+        first_rep_indent = len(rep_lines[0]) - len(rep_lines[0].lstrip()) if rep_lines else 0
+        if first_rep_indent == 0:
+            replacement_normalized = "\n".join(
+                [(" " * indent_delta + l) if l.strip() else l for l in rep_lines]
+            )
 
     if target_normalized == replacement_normalized:
         return (
