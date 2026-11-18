@@ -410,3 +410,23 @@ def test_circuit_breaker_rule_0_allows_action_if_disk_modified():
         files_modified_since_cmd_fail=True
     )
     assert blocked is False
+
+
+def test_circuit_breaker_rule_0_blocks_immediate_identical_command_on_unchanged_disk():
+    """Verifica que si se ejecuta run_command y el agente intenta re-ejecutar el mismo comando inmediatamente sin cambios en disco, sea bloqueado."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    action_history = [
+        "run_command:pytest"
+    ]
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "pytest"},
+        action_history=action_history,
+        files_modified_since_cmd_fail=False
+    )
+    assert blocked is True
+    assert "CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO" in msg
+    assert "Periodo 1" in msg
+

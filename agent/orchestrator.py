@@ -355,7 +355,7 @@ class AgentOrchestrator:
 
         # Regla 0: Detector Matemático Universal de Ciclos Periódicos (Periodos p=1, 2, 3)
         # Solo aplica a herramientas activas de mutación o ejecución (no a inspección pasiva)
-        if tool_name not in passive_tools and action_history and len(action_history) >= 2:
+        if tool_name not in passive_tools and action_history and len(action_history) >= 1:
             target_path_str = str(args.get("path", "") or "")
             target_file_name = Path(target_path_str).name if target_path_str else ""
             is_fixing_syntax = (
@@ -372,17 +372,17 @@ class AgentOrchestrator:
                 current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
                 candidate_history = list(action_history) + [current_signature]
                 cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
-                if cycle and not files_modified_since_cmd_fail:
+                if cycle:
                     period, pattern = cycle
-                    cycle_str = " ➔ ".join(pattern)
-                    msg = (
-                        f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
-                        f"Has caído en una secuencia cíclica repetitiva de acciones: {cycle_str}.\n"
-                        "Esta secuencia ya se ejecutó previamente y no produjo ninguna modificación efectiva en el estado del disco.\n"
-                        "• ACCIÓN OBLIGATORIA: Rompe el ciclo inmediatamente. Si una prueba falla o una edición no surte efecto, "
-                        "revisa la causa raíz del error o reescribe el archivo afectado completamente usando 'write_file'."
-                    )
-                    return True, msg
+                    if not files_modified_since_cmd_fail or (period == 1 and action_history and action_history[-1] == current_signature):
+                        cycle_str = " ➔ ".join(pattern)
+                        msg = (
+                            f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
+                            f"La acción '{current_signature}' se está repitiendo consecutivamente sin modificaciones en el disco: {cycle_str}.\n"
+                            "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
+                            "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
+                        )
+                        return True, msg
 
         # Combinar failed_commands con last_failed_command para retrocompatibilidad
         active_failed_cmds = set(failed_commands or set())
@@ -825,9 +825,9 @@ class AgentOrchestrator:
 
                 elif tool_name == "run_command":
                     cmd_norm = args.get("command", "").strip().lower()
+                    files_modified_since_cmd_fail = False
                     if not is_success:
                         failed_commands.add(cmd_norm)
-                        files_modified_since_cmd_fail = False
                         last_failed_tool_key = tool_call_key
                         if "syntaxerror" in tool_result.lower():
                             for part in args.get("command", "").split():

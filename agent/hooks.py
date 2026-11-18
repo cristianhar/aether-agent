@@ -53,6 +53,22 @@ class HookManager:
         Puede enriquecer el resultado o inyectar advertencias sintácticas.
         """
         # Si fue una edición o escritura de archivo, el Auto-Linter ya evaluó sintaxis
+        # Si la salida de run_command indica éxito de pruebas, guiar al modelo a concluir el turno
+        if tool_name == "run_command" and "Código de salida: 0" in result:
+            if "passed" in result or "test session starts" in result:
+                result += (
+                    "\n[HOOK POST-TOOL]: ✅ ¡TODAS LAS PRUEBAS PASARON EXITOSAMENTE (Código de salida: 0)!\n"
+                    "• Tu verificación ha concluido con éxito. Está PROHIBIDO volver a ejecutar el mismo comando de pruebas.\n"
+                    "• Si iniciaste un plan con 'update_plan', ciérralo llamando a 'update_plan(..., is_completed=True)'. De lo contrario, CONCLUYE EL TURNO AHORA e informa al usuario en tu respuesta final el resumen de los archivos creados y pruebas aprobadas."
+                )
+
+        # Si se actualizó el plan y quedó completado
+        if tool_name == "update_plan" and ("¡Todos los pasos del plan han sido completados" in result or "🎉 COMPLETADO" in result):
+            result += (
+                "\n[HOOK POST-TOOL]: 🎉 ¡Plan completado y verificado en su totalidad!\n"
+                "• CONCLUYE EL TURNO AHORA e informa al usuario en tu respuesta final el resumen de los hitos alcanzados."
+            )
+
         # Si la salida de run_command indica fallo, inyectar alerta de auto-sanación
         if tool_name == "run_command" and ("Código de salida: 1" in result or "Traceback" in result):
             if "EOFError" in result:
