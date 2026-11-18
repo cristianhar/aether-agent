@@ -3,6 +3,7 @@ Punto de entrada de la consola interactiva CLI para AETHER Agent.
 Interfaz enriquecida construida con 'rich' y 'prompt_toolkit'.
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -75,7 +76,12 @@ def confirm_prompt(question: str) -> bool:
 
 
 def main():
-    model = "qwen2.5-coder:7b"
+    parser = argparse.ArgumentParser(description="AETHER Agent CLI")
+    parser.add_argument("-p", "--prompt", type=str, default=None, help="Ejecutar una tarea en modo no interactivo y salir")
+    parser.add_argument("--model", type=str, default="qwen2.5-coder:7b", help="Modelo de Ollama a utilizar")
+    cli_args, unknown = parser.parse_known_args()
+
+    model = cli_args.model
     orchestrator = AgentOrchestrator(
         model=model,
         on_thought=handle_thought,
@@ -86,6 +92,18 @@ def main():
 
     ollama_ok = orchestrator.check_ollama_alive()
     render_banner(model, ollama_ok)
+
+    # Modo Headless / One-Shot (ejecución directa por CLI o scripts)
+    if cli_args.prompt:
+        if not ollama_ok:
+            console.print("[bold red]❌ Error: Ollama no está en ejecución. Inícialo con 'ollama serve'.[/bold red]")
+            sys.exit(1)
+        console.print(f"\n[bold cyan]AETHER ❯[/bold cyan] {cli_args.prompt}\n")
+        with console.status("[bold cyan]AETHER pensando y ejecutando herramientas...[/bold cyan]", spinner="dots"):
+            answer = orchestrator.run_turn(cli_args.prompt)
+        console.print("\n[bold green]Respuesta Final:[/bold green]")
+        console.print(Markdown(answer))
+        return
 
     try:
         session = PromptSession(history=InMemoryHistory())
