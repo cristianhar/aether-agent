@@ -402,11 +402,20 @@ class AgentOrchestrator:
                     period, pattern = cycle
                     if not files_modified_since_cmd_fail or (period == 1 and action_history and action_history[-1] == current_signature):
                         cycle_str = " ➔ ".join(pattern)
+                        if tool_name in ["run_command", "run_tests"]:
+                            cycle_hint = (
+                                "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
+                                "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
+                            )
+                        else:
+                            cycle_hint = (
+                                f"• El archivo ya fue creado o guardado. Procede AHORA al siguiente paso: corre las pruebas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
+                            )
                         msg = (
                             f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
                             f"La acción '{current_signature}' se está repitiendo consecutivamente sin modificaciones en el disco: {cycle_str}.\n"
-                            "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
-                            "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
+                            f"{cycle_hint}"
                         )
                         return True, msg
 
@@ -539,6 +548,7 @@ class AgentOrchestrator:
         plan_active_in_turn: bool = False
         plan_completed_in_turn: bool = False
         proactive_prompts_sent: int = 0
+        tests_executed_in_turn: bool = False
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -683,16 +693,25 @@ class AgentOrchestrator:
                 tests_requested = any(w in prompt_lower for w in ["test", "tests", "prueba", "pruebas", "pytest"])
                 tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
                 missing_tests = tests_requested and not tests_exist
+                tests_pending_execution = tests_requested and tests_exist and not tests_executed_in_turn
 
-                if (is_premature_deflection or missing_tests) and proactive_prompts_sent < 1 and iteration < self.max_iterations - 1:
+                if (is_premature_deflection or missing_tests or tests_pending_execution) and proactive_prompts_sent < 1 and iteration < self.max_iterations - 1:
                     proactive_prompts_sent += 1
                     self.memory.add_assistant_message(content=content)
-                    proactive_hint = (
-                        "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo, NUNCA te detengas a medias para preguntar "
-                        "'¿deseas que siga creando pruebas?'. La instrucción inicial ya solicitó implementar el código y sus pruebas unitarias.\n"
-                        "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o confirmaciones como 'Entendido'. "
-                        "Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a la herramienta 'write_file' para crear el archivo de pruebas 'test_*.py'."
-                    )
+                    if tests_pending_execution:
+                        proactive_hint = (
+                            "[SISTEMA AETHER - VERIFICACIÓN OBLIGATORIA]: Los archivos de código y pruebas ya existen en el disco, "
+                            "pero AÚN NO HAS EJECUTADO LOS TESTS en este turno.\n"
+                            "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE ser la llamada a herramienta 'run_tests()' o "
+                            "'run_command(command=\"pytest\")' para verificar que las pruebas pasen en verde antes de concluir la tarea."
+                        )
+                    else:
+                        proactive_hint = (
+                            "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo, NUNCA te detengas a medias para preguntar "
+                            "'¿deseas que siga creando pruebas?'. La instrucción inicial ya solicitó implementar el código y sus pruebas unitarias.\n"
+                            "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o confirmaciones como 'Entendido'. "
+                            "Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a la herramienta 'write_file' para crear el archivo de pruebas 'test_*.py'."
+                        )
                     self.memory.add_user_message(content=proactive_hint)
                     continue
 
@@ -896,8 +915,13 @@ class AgentOrchestrator:
                     last_assertion_error = None
                     assertion_error_repeat_count = 0
 
+                elif tool_name in ["run_tests"]:
+                    tests_executed_in_turn = True
+
                 elif tool_name == "run_command":
                     cmd_norm = args.get("command", "").strip().lower()
+                    if any(t_kw in cmd_norm for t_kw in ["pytest", "test", "py_compile", "unittest"]):
+                        tests_executed_in_turn = True
                     files_modified_since_cmd_fail = False
                     if not is_success:
                         failed_commands.add(cmd_norm)
