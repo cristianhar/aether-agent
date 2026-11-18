@@ -75,6 +75,29 @@ def detect_action_cycle(action_history: List[str], max_period: int = 3, min_repe
     return None
 
 
+def extract_test_failure_summary(tool_result: str) -> str:
+    """Extrae un resumen limpio de los fallos de tests reportados por pytest o unittest."""
+    if not tool_result:
+        return ""
+    lines = tool_result.splitlines()
+    failures = []
+    for line in lines:
+        s = line.strip()
+        if (
+            s.startswith("E   ")
+            or s.startswith("FAILED ")
+            or any(s.startswith(f"{ex}:") or f" {ex}:" in s for ex in [
+                "AssertionError", "AttributeError", "ImportError", "TypeError",
+                "NameError", "SyntaxError", "ValueError", "KeyError", "IndexError"
+            ])
+        ):
+            failures.append(s)
+    if failures:
+        return "\n".join(failures[:10])
+    non_empty = [l.strip() for l in lines if l.strip()]
+    return "\n".join(non_empty[-6:])
+
+
 class AgentOrchestrator:
     def __init__(
         self,
@@ -335,6 +358,7 @@ class AgentOrchestrator:
         action_history: Optional[List[str]] = None,
         plan_completed: bool = False,
         last_test_exit_code: Optional[int] = None,
+        last_test_failure_summary: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle Universal:
@@ -410,9 +434,11 @@ class AgentOrchestrator:
                                     "NO vuelvas a ejecutar el comando. Concluye el turno e informa al usuario en tu respuesta final."
                                 )
                             elif last_test_exit_code is not None and last_test_exit_code != 0:
+                                failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
                                 cycle_hint = (
                                     "• Las pruebas FALLARON (Exit code != 0). NO puedes dar la tarea por concluida ni repetir el comando sin cambios.\n"
-                                    "• ACCIÓN OBLIGATORIA: Analiza el Traceback o fallo reportado arriba y modifica el código fuente o el archivo de pruebas usando 'write_file' o 'edit_file'."
+                                    f"{failure_detail}"
+                                    "• ACCIÓN OBLIGATORIA: Analiza el Traceback o fallo reportado y modifica el código fuente o el archivo de pruebas usando 'write_file' o 'edit_file'."
                                 )
                             else:
                                 cycle_hint = (
@@ -423,12 +449,19 @@ class AgentOrchestrator:
                             target_file_obj = Path(target_path_str) if target_path_str else None
                             if target_file_obj and target_file_obj.suffix == ".py":
                                 t_stem = target_file_obj.stem
-                                expected_test_file = f"test_{t_stem}.py" if not t_stem.startswith("test_") else f"{t_stem}.py"
-                                cycle_hint = (
-                                    f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
-                                    f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
-                                    f"• NUNCA inventes nombres de archivos no pedidos (como calculadoras o módulos ajenos). Implementa '{expected_test_file}'."
-                                )
+                                if t_stem.startswith("test_"):
+                                    cycle_hint = (
+                                        f"• El archivo de pruebas '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
+                                        "• Tu SIGUIENTE ACCIÓN OBLIGATORIA es ejecutar las pruebas llamando a 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                        f"• NO vuelvas a escribir '{target_file_obj.name}' sin haber ejecutado las pruebas primero."
+                                    )
+                                else:
+                                    expected_test_file = f"test_{t_stem}.py"
+                                    cycle_hint = (
+                                        f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
+                                        f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
+                                        f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
+                                    )
                             else:
                                 cycle_hint = (
                                     "• El archivo ya fue creado o guardado. Si aún no has creado el archivo de pruebas ('test_*.py'), "
@@ -575,6 +608,7 @@ class AgentOrchestrator:
         proactive_prompts_sent: int = 0
         tests_executed_in_turn: bool = False
         last_test_exit_code: Optional[int] = None
+        last_test_failure_summary: Optional[str] = None
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -734,10 +768,12 @@ class AgentOrchestrator:
                 # Guardián de Pruebas Fallidas: Nunca permitir dar por completada la tarea si las pruebas ejecutadas fallaron
                 if last_test_exit_code is not None and last_test_exit_code != 0 and iteration < self.max_iterations - 1:
                     self.memory.add_assistant_message(content=content)
+                    failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
                     test_failed_guard = (
-                        "[SISTEMA AETHER - CORRECCIÓN DE PRUEBAS OBLIGATORIA]: No puedes dar la tarea por concluida porque las pruebas unitarias FALLARON (Exit code != 0).\n"
-                        "• Revisa los errores y fallos reportados en la salida de pruebas de arriba.\n"
-                        "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE ser 'write_file' o 'edit_file' para corregir los errores en el código fuente o en los tests hasta que pytest pase al 100%."
+                        "[SISTEMA AETHER - CORRECCIÓN DE PRUEBAS OBLIGATORIA]: No puedes dar la tarea por concluida ni pedir datos al usuario porque las pruebas unitarias FALLARON (Exit code != 0).\n"
+                        f"{failure_detail}\n"
+                        "• Está TERMINANTEMENTE PROHIBIDO responder con texto conversacional, confirmaciones o preguntas.\n"
+                        "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a 'write_file' o 'edit_file' para corregir el error indicado arriba."
                     )
                     self.memory.add_user_message(content=test_failed_guard)
                     continue
@@ -894,6 +930,7 @@ class AgentOrchestrator:
                     action_history=action_history,
                     plan_completed=plan_completed_in_turn,
                     last_test_exit_code=last_test_exit_code,
+                    last_test_failure_summary=last_test_failure_summary,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
@@ -983,6 +1020,10 @@ class AgentOrchestrator:
                     if tool_name == "run_tests" or any(t_kw in cmd_norm for t_kw in ["pytest", "test", "py_compile", "unittest"]):
                         tests_executed_in_turn = True
                         last_test_exit_code = 0 if is_success else 1
+                        if not is_success:
+                            last_test_failure_summary = extract_test_failure_summary(tool_result)
+                        else:
+                            last_test_failure_summary = None
 
                     files_modified_since_cmd_fail = False
                     if not is_success:
