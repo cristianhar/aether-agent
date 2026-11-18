@@ -23,10 +23,27 @@ def calculate_file_hash(path: Path) -> Optional[str]:
 
 
 def get_absolute_path(path_str: str, base_dir: Optional[Path] = None) -> Path:
-    base = base_dir or Path.cwd()
+    base = (base_dir or Path.cwd()).resolve()
     expanded = os.path.expandvars(os.path.expanduser(path_str))
     target_path = Path(expanded)
     if not target_path.is_absolute():
+        # 1. Si el archivo con target_path.name ya existe en base, y target_path tiene prefijos que no existen,
+        # resolver directamente a él (tolerancia a alucinaciones de carpetas repetidas)
+        if (base / target_path.name).is_file() and not (base / target_path).is_file():
+            return (base / target_path.name).resolve()
+
+        # 2. Detección de solapamiento de sufijo de base con prefijo de target_path
+        # Ej: base = ".../.sandbox_suite_4/p_01" y target_path = ".sandbox_suite_4/p_01/test.py"
+        base_parts = base.parts
+        p_parts = target_path.parts
+        matched_overlap = 0
+        for i in range(1, min(len(base_parts), len(p_parts)) + 1):
+            if tuple(p.lower() for p in base_parts[-i:]) == tuple(p.lower() for p in p_parts[:i]):
+                matched_overlap = i
+        if matched_overlap > 0:
+            remaining_p = Path(*p_parts[matched_overlap:])
+            return (base / remaining_p).resolve()
+
         target_path = (base / target_path).resolve()
     else:
         target_path = target_path.resolve()

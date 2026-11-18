@@ -117,14 +117,21 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
     try:
         normalized_command = command.strip()
 
-        # Inyectar entorno virtual (.venv / venv) en PATH si existe en el proyecto
+        # Inyectar entorno virtual (.venv / venv) en PATH buscando en work_dir o hacia arriba en sus padres
         env = os.environ.copy()
-        for venv_name in [".venv", "venv"]:
-            venv_bin = work_dir / venv_name / ("Scripts" if os.name == "nt" else "bin")
-            if venv_bin.exists():
-                env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
-                env["VIRTUAL_ENV"] = str(venv_bin.parent)
+        current_check = work_dir
+        for _ in range(5):
+            for venv_name in [".venv", "venv"]:
+                venv_bin = current_check / venv_name / ("Scripts" if os.name == "nt" else "bin")
+                if venv_bin.exists():
+                    env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
+                    env["VIRTUAL_ENV"] = str(venv_bin.parent)
+                    break
+            if "VIRTUAL_ENV" in env:
                 break
+            if current_check.parent == current_check:
+                break
+            current_check = current_check.parent
 
         if os.name == "nt":
             # Normalización inteligente de comandos Linux/POSIX hacia Windows

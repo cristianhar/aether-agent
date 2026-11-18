@@ -866,7 +866,7 @@ def run_tests_tool(test_target: str = None) -> str:
             target = "."
     elif target.lower() in ["all", "suite", "full"]:
         target = "."
-    cmd = f"pytest -v -o testpaths=. {target}"
+    cmd = f"pytest -v --rootdir=. -o testpaths=. {target}"
     return run_command(cmd)
 
 
