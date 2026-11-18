@@ -177,6 +177,51 @@ def get_current_plan_state() -> Optional[Dict[str, Any]]:
     return None
 
 
+def clear_completed_plan() -> None:
+    """Archiva y limpia el plan si ya fue completado, para no sesgar nuevos turnos."""
+    global _CURRENT_PLAN
+    aether_dir = Path.cwd() / ".aether"
+    plan_md = aether_dir / "plans" / "plan_activo.md"
+    plan_json = aether_dir / "current_plan.json"
+    is_done = False
+    if _CURRENT_PLAN and _CURRENT_PLAN.get("is_completed"):
+        is_done = True
+    elif plan_json.is_file():
+        try:
+            data = json.loads(plan_json.read_text(encoding="utf-8"))
+            if data.get("is_completed"):
+                is_done = True
+        except Exception:
+            pass
+    elif plan_md.is_file():
+        try:
+            txt = plan_md.read_text(encoding="utf-8")
+            if "🎉 COMPLETADO" in txt or "Todos los hitos finalizados" in txt:
+                is_done = True
+        except Exception:
+            pass
+
+    if is_done:
+        _CURRENT_PLAN = {
+            "steps": [],
+            "current_step": 0,
+            "acceptance_criteria": [],
+            "is_completed": False,
+        }
+        history_file = aether_dir / "plans" / "plan_history.md"
+        if plan_md.is_file():
+            try:
+                from datetime import datetime
+                txt = plan_md.read_text(encoding="utf-8")
+                history_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(history_file, "a", encoding="utf-8") as hf:
+                    hf.write(f"\n\n---\n<!-- Plan archivado {datetime.now().isoformat()} -->\n{txt}\n")
+                plan_md.unlink(missing_ok=True)
+            except Exception:
+                pass
+        plan_json.unlink(missing_ok=True)
+
+
 def request_approval(action_description: str, risk_level: str = "high") -> str:
     """
     Solicita autorización explícita al usuario humano antes de ejecutar una acción sensible.

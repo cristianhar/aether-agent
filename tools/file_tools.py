@@ -241,7 +241,7 @@ def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
     return None
 
 
-def write_file(path: str, content: str) -> str:
+def write_file(path: str, content: str = "") -> str:
     """
     Crea o sobrescribe un archivo asegurando la creación recursiva de directorios padre
     e incorpora validación sintáctica automática (Auto-Linter).

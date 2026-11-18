@@ -126,3 +126,54 @@ def test_remember_and_search_memory_tools():
     list_res = list_memories(category="auth")
     assert "token_ttl" in list_res
 
+
+def test_clear_completed_plan_and_archive(tmp_path, monkeypatch):
+    from tools.agent_tools import update_plan, clear_completed_plan, get_plan
+    monkeypatch.chdir(tmp_path)
+
+    update_plan(["Paso inicial", "Paso final"], current_step=1)
+    assert "Paso inicial" in get_plan()
+
+    # Si no está completado, no se archiva
+    clear_completed_plan()
+    assert "Paso inicial" in get_plan()
+
+    # Si se marca como completado, debe archivarse y borrarse
+    update_plan(["Paso inicial", "Paso final"], is_completed=True)
+    clear_completed_plan()
+    plan_after = get_plan()
+    assert "No hay ningún plan de ejecución activo" in plan_after
+    history_file = tmp_path / ".aether" / "plans" / "plan_history.md"
+    assert history_file.is_file()
+    assert "Paso inicial" in history_file.read_text(encoding="utf-8")
+
+
+def test_conclude_turn_tool():
+    from tools.registry import execute_tool
+    res = execute_tool("conclude_turn", {"message": "Implementación finalizada con 5 tests verdes"})
+    assert "🏁 Turno concluido" in res
+    assert "Implementación finalizada" in res
+
+    # Alias finish_turn
+    res_alias = execute_tool("finish_turn", {"message": "Listo"})
+    assert "🏁 Turno concluido" in res_alias
+
+
+def test_execute_tool_parameter_aliases(tmp_path, monkeypatch):
+    from tools.registry import execute_tool
+    monkeypatch.chdir(tmp_path)
+
+    # create_file sin content no debe arrojar TypeError
+    res_create = execute_tool("create_file", {"file_path": "empty.py"})
+    assert "guardado correctamente" in res_create
+    assert (tmp_path / "empty.py").exists()
+
+    # write_file con alias text y file
+    res_write = execute_tool("write_file", {"file": "hello.py", "text": "print('hello')"})
+    assert "guardado correctamente" in res_write
+    assert (tmp_path / "hello.py").read_text(encoding="utf-8") == "print('hello')"
+
+    # run_command con alias cmd
+    res_cmd = execute_tool("run_command", {"cmd": "python -c 'print(42)'"})
+    assert "42" in res_cmd
+

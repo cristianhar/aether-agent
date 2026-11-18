@@ -31,7 +31,8 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
         "read_file", "cat", "view_file", "search_codebase", "grep_search", "grep", "list_directory", "get_file_outline",
         "get_repo_map", "get_diagnostics", "get_process_status",
         "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
-        "list_mcp_tools", "delegate_research", "get_plan", "search_memory", "list_memories"
+        "list_mcp_tools", "delegate_research", "get_plan", "search_memory", "list_memories",
+        "conclude_turn", "finish_turn", "complete_task", "finish", "done"
     ]:
         category = ToolCategory.FILESYSTEM if name in ["read_file", "cat", "view_file", "search_codebase", "grep_search", "grep", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
@@ -387,7 +388,8 @@ class AgentOrchestrator:
         passive_tools = {
             "read_file", "list_directory", "search_codebase", "grep_search", "grep", "get_file_outline",
             "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
-            "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
+            "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map",
+            "conclude_turn", "finish_turn", "complete_task", "finish", "done"
         }
 
         # Completion Guard: Si el plan fue completado, no permitir nuevas herramientas activas de mutación
@@ -620,6 +622,13 @@ class AgentOrchestrator:
         turn_start_time = time.perf_counter()
         self.turn_counter += 1
         current_turn = self.turn_counter
+
+        # Archivo y limpieza automática de planes completados en turnos previos para evitar sesgos
+        try:
+            from tools.agent_tools import clear_completed_plan
+            clear_completed_plan()
+        except Exception:
+            pass
 
         self.set_state(AgentState.RUNNING)
         self.memory.add_user_message(user_prompt)
@@ -922,6 +931,33 @@ class AgentOrchestrator:
 
                 category, perm_level = get_tool_metadata(tool_name)
 
+                # Intercepción limpia de herramientas de conclusión de turno (conclude_turn, finish_turn, complete_task, finish, done)
+                if tool_name in ["conclude_turn", "finish_turn", "complete_task", "finish", "done"]:
+                    if self.on_tool_call:
+                        self.on_tool_call(tool_name, args)
+
+                    # Guardián de Pruebas Fallidas: si las pruebas fallaron en este turno, no permitir concluir
+                    if last_test_exit_code is not None and last_test_exit_code != 0 and iteration < self.max_iterations - 2:
+                        failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+                        tool_result = (
+                            f"⛔ [NO SE PUEDE CONCLUIR - PRUEBAS FALLIDAS (Exit code {last_test_exit_code})]:\n"
+                            f"{failure_detail}\n"
+                            "• Las pruebas unitarias aún están fallando. No puedes dar la tarea por concluida.\n"
+                            "• ACCIÓN OBLIGATORIA: Revisa el error reportado arriba y usa 'write_file' o 'edit_file' para corregir el código."
+                        )
+                        total_tool_failures += 1
+                        self._record_and_feed_result(tool_name, args, tool_result, False, 1.0)
+                        continue
+
+                    finish_msg = args.get("message") or args.get("summary") or args.get("text") or content or "Tarea completada con éxito."
+                    tool_result = f"🏁 Turno concluido: {finish_msg}"
+                    self._record_and_feed_result(tool_name, args, tool_result, True, 1.0)
+                    final_answer = finish_msg
+                    self.memory.add_assistant_message(content=final_answer)
+                    self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
+                    self.set_state(AgentState.COMPLETED)
+                    break
+
                 # Notificar a la UI
                 if self.on_tool_call:
                     self.on_tool_call(tool_name, args)
@@ -1152,6 +1188,9 @@ class AgentOrchestrator:
                             tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
 
                 self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
+
+            if self.state == AgentState.COMPLETED or final_answer:
+                break
 
         if not final_answer:
             final_answer = "La tarea alcanzó el número máximo de iteraciones sin finalizar formalmente."

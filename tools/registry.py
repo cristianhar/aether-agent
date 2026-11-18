@@ -841,9 +841,30 @@ def apply_patch_tool(path: str, target: str, replacement: str, expected_sha256: 
 
 
 def run_tests_tool(test_target: str = None) -> str:
-    target = test_target.strip() if test_target else "."
+    import time
+    from pathlib import Path
+    target = test_target.strip() if test_target else ""
+    if not target:
+        recent_root_tests = [
+            p for p in Path.cwd().glob("test_*.py")
+            if (time.time() - p.stat().st_mtime) < 3600
+        ]
+        if recent_root_tests:
+            recent_root_tests.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            target = " ".join(p.name for p in recent_root_tests)
+        else:
+            root_tests = list(Path.cwd().glob("test_*.py"))
+            if root_tests:
+                root_tests.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                target = root_tests[0].name
+            else:
+                target = "."
     cmd = f"pytest -v -o testpaths=. {target}"
     return run_command(cmd)
+
+
+def conclude_turn_tool(message: str = "Tarea concluida", **kwargs) -> str:
+    return f"🏁 Turno concluido: {message}"
 
 
 def start_background_process_tool(command: str, cwd: str = None) -> str:
@@ -939,6 +960,11 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "pytest": run_tests_tool,
     "test": run_tests_tool,
     "test_runner": run_tests_tool,
+    "conclude_turn": conclude_turn_tool,
+    "finish_turn": conclude_turn_tool,
+    "complete_task": conclude_turn_tool,
+    "finish": conclude_turn_tool,
+    "done": conclude_turn_tool,
     "start_background_process": start_background_process_tool,
     "get_process_status": get_process_status_tool,
     "cancel_process": cancel_process_tool,
@@ -979,6 +1005,31 @@ def execute_tool(name: str, arguments: Any) -> str:
 
     if not isinstance(arguments, dict):
         arguments = {}
+
+    # Normalización de alias comunes de parámetros enviados por LLMs locales
+    if "path" not in arguments:
+        for p_alias in ["file_path", "filepath", "filename", "file"]:
+            if p_alias in arguments:
+                arguments["path"] = arguments.pop(p_alias)
+                break
+
+    if "content" not in arguments:
+        for c_alias in ["text", "code", "body"]:
+            if c_alias in arguments and name in ["write_file", "create_file", "new_file", "save_file"]:
+                arguments["content"] = arguments.pop(c_alias)
+                break
+
+    if "command" not in arguments:
+        for cmd_alias in ["cmd", "script", "instruction"]:
+            if cmd_alias in arguments and name in ["run_command", "exec", "execute_command", "bash", "sh", "terminal"]:
+                arguments["command"] = arguments.pop(cmd_alias)
+                break
+
+    if "test_target" not in arguments:
+        for t_alias in ["target", "path", "file"]:
+            if t_alias in arguments and name in ["run_tests", "pytest", "test", "test_runner"]:
+                arguments["test_target"] = arguments.pop(t_alias)
+                break
 
     try:
         result = handler(**arguments)
