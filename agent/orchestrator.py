@@ -704,7 +704,11 @@ class AgentOrchestrator:
                             failed_commands.clear()
                             files_modified_since_cmd_fail = True
 
-                if is_success:
+                if tool_name in ["read_file", "list_directory", "search_codebase", "get_file_outline", "get_git_status", "get_git_diff"]:
+                    # Herramientas de solo lectura pasiva: proveen contexto pero NO modifican estado,
+                    # por lo tanto NO resetean consecutive_tool_failures ni recent_failed_tools
+                    pass
+                elif is_success:
                     consecutive_tool_failures = 0
                     recent_failed_tools.clear()
                     last_failed_tool_key = None

@@ -78,3 +78,30 @@ def test_edit_file_noop_rejected(tmp_path):
     assert "IDÉNTICO" in res
 
 
+def test_edit_file_fuzzy_similarity_match(tmp_path):
+    f = tmp_path / "async_mod.py"
+    original = """@pytest.mark.asyncio
+async def test_something():
+    res = await run_task()
+    assert res is True
+"""
+    f.write_text(original, encoding="utf-8")
+
+    # Target con typo leve (falta 'async' en def)
+    target = """@pytest.mark.asyncio
+def test_something():
+    res = await run_task()
+    assert res is True
+"""
+    replacement = """def test_something():
+    res = run_sync_task()
+    assert res is True
+"""
+    res = edit_file(str(f), target=target, replacement=replacement)
+    assert "Éxito" in res
+    assert "coincidencia difusa" in res
+
+    content = f.read_text(encoding="utf-8")
+    assert "run_sync_task" in content
+
+

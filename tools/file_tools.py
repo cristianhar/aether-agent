@@ -105,6 +105,29 @@ def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
 
     if len(matches) == 1:
         return matches[0], " (aplicado mediante coincidencia inteligente de espacios)"
+
+    # Comparación 3: Coincidencia difusa profunda con difflib (para omisiones de palabras clave como 'async' o typos leves)
+    if not matches and m >= 2:
+        from difflib import SequenceMatcher
+        best_ratio = 0.0
+        best_window = None
+        target_str = "\n".join(target_lines)
+
+        for i in range(len(content_lines) - m + 1):
+            window_str = "\n".join([line.rstrip() for line in content_lines[i : i + m]])
+            ratio = SequenceMatcher(None, window_str, target_str).ratio()
+            if ratio >= 0.85:
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_window = "\n".join(content_lines[i : i + m])
+                    matches = [best_window]
+                elif abs(ratio - best_ratio) < 0.01:
+                    matches.append("\n".join(content_lines[i : i + m]))
+
+        if len(matches) == 1 and best_window and best_ratio >= 0.85:
+            pct = int(best_ratio * 100)
+            return best_window, f" (aplicado mediante coincidencia difusa inteligente al {pct}%)"
+
     return None
 
 
