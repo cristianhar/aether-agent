@@ -59,3 +59,13 @@ def test_delete_and_move_file(tmp_path):
     assert not f2.exists()
 
 
+def test_edit_file_empty_target_rejected(tmp_path):
+    f = tmp_path / "module.py"
+    f.write_text("import os\n", encoding="utf-8")
+
+    res = edit_file(str(f), target="", replacement="import time\n")
+    assert "Error de parámetro 'target'" in res
+    assert "no puede ser una cadena vacía" in res
+    assert "write_file" in res
+
+

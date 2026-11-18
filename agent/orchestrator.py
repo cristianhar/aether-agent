@@ -261,6 +261,8 @@ class AgentOrchestrator:
         last_failed_tool_key: Optional[str] = None,
         last_failed_command: Optional[str] = None,
         consecutive_edit_failures: int = 0,
+        recent_failed_tools: Optional[list] = None,
+        consecutive_tool_failures: int = 0,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle:
@@ -268,6 +270,8 @@ class AgentOrchestrator:
         1. Repite comandos de consola que ya fallaron sin haber modificado ningún archivo.
         2. Intenta ejecutar un script que contiene un SyntaxError detectado sin haberlo editado.
         3. Llama repetidamente a la misma herramienta con argumentos idénticos inmediatamente después de haber fallado.
+        4. Alterna a ciegas entre herramientas de edición sin leer el código real.
+        5. Cae en un bucle alternante oscilante (ping-pong) entre dos herramientas diferentes.
         """
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
@@ -280,11 +284,15 @@ class AgentOrchestrator:
         if tool_name == "run_command":
             cmd_norm = args.get("command", "").strip().lower()
             if active_failed_cmds and cmd_norm in active_failed_cmds and not files_modified_since_cmd_fail:
+                if consecutive_edit_failures >= 1:
+                    action_hint = "• ACCIÓN OBLIGATORIA: Tus intentos de edición no han modificado el archivo exitosamente. Usa 'read_file' para inspeccionar el archivo o reescríbelo con 'write_file'. NO vuelvas a ejecutar el mismo comando sin cambios en disco."
+                else:
+                    action_hint = "• ACCIÓN OBLIGATORIA: Si aún no has corregido el código, usa 'read_file' para inspeccionarlo, 'edit_file' para modificar el bloque exacto, o 'write_file' para reescribirlo. Si la verificación ya concluyó con éxito, concluye el turno e informa al usuario en tu respuesta final para que lo ejecute en su propia terminal."
                 msg = (
                     f"⛔ [CIRCUIT BREAKER]: El comando '{args.get('command')}' ya falló previamente y NO has modificado ningún archivo en el disco desde entonces.\n"
                     "• Volver a ejecutar el mismo comando sin cambios en disco producirá exactamente el mismo error.\n"
                     "• Si faltaba una librería o paquete, instálala usando 'pip install <libreria>'.\n"
-                    "• ACCIÓN OBLIGATORIA: Si aún no has corregido el código, usa 'edit_file'. Si la verificación ya concluyó con éxito, concluye el turno e informa al usuario en tu respuesta final para que lo ejecute en su propia terminal."
+                    f"{action_hint}"
                 )
                 return True, msg
 
@@ -312,12 +320,34 @@ class AgentOrchestrator:
         # Regla 4: Bloqueo de bucle alternante de edición a ciegas (edit_file / apply_patch fallando >= 2 veces)
         if tool_name in ("edit_file", "apply_patch") and consecutive_edit_failures >= 2:
             target_p = args.get("path", "")
+            file_preview = ""
+            try:
+                real_p = Path(target_p).resolve()
+                if real_p.exists() and real_p.is_file():
+                    file_text = real_p.read_text(encoding="utf-8", errors="replace")
+                    file_preview = f"\n\n📄 [CÓDIGO REAL EN DISCO DE '{target_p}']:\n```python\n{file_text}\n```\n"
+            except Exception:
+                pass
+
             msg = (
                 f"⛔ [CIRCUIT BREAKER - EDICIÓN A CIEGAS BLOQUEADA]: Llevas {consecutive_edit_failures} intentos consecutivos fallidos modificando '{target_p}' porque el texto 'target' no coincide con el archivo en disco.\n"
-                "Está TERMINANTEMENTE PROHIBIDO seguir alternando entre 'edit_file' y 'apply_patch' a ciegas.\n"
-                f"• ACCIÓN OBLIGATORIA: Ejecuta 'read_file(path=\"{target_p}\")' para leer las líneas exactas e indentación real, o reescribe el módulo completo usando 'write_file'."
+                "Está TERMINANTEMENTE PROHIBIDO seguir enviando llamadas de edición a ciegas sin ver el código real.\n"
+                f"Para ayudarte, aquí tienes el código físico actual del archivo:{file_preview}"
+                f"• ACCIÓN OBLIGATORIA: Reescribe el módulo completo usando 'write_file(path=\"{target_p}\", content=...)' con el código final corregido, o lee líneas adicionales con 'read_file(path=\"{target_p}\")'."
             )
             return True, msg
+
+        # Regla 5: Detección de bucle oscilante multi-herramienta (Ping-Pong entre 2 herramientas fallidas)
+        if recent_failed_tools and len(recent_failed_tools) >= 3 and consecutive_tool_failures >= 3:
+            w = recent_failed_tools[-3:] + [tool_name]
+            # Patrón A-B-A-B
+            if w[0] == w[2] and w[1] == w[3] and w[0] != w[1]:
+                msg = (
+                    f"⛔ [CIRCUIT BREAKER - BUCLE ALTERNANTE DETECTADO]: Has entrado en un bucle repetitivo alternando entre '{w[0]}' y '{w[1]}'.\n"
+                    f"Ambas herramientas están fallando sucesivamente porque no has modificado la causa real del problema.\n"
+                    f"• ACCIÓN OBLIGATORIA: Detén la alternancia. Si necesitas corregir un archivo, usa 'write_file' para reescribirlo completamente con la solución correcta o inspecciónalo primero con 'read_file'."
+                )
+                return True, msg
 
         return False, ""
 
@@ -346,8 +376,21 @@ class AgentOrchestrator:
         last_assertion_error: Optional[str] = None
         assertion_error_repeat_count: int = 0
         consecutive_edit_failures: int = 0
+        consecutive_tool_failures: int = 0
+        recent_failed_tools: list = []
 
         for iteration in range(1, self.max_iterations + 1):
+            # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
+            if consecutive_tool_failures >= 6:
+                final_answer = (
+                    "⚠️ [CIRCUIT BREAKER GENERAL]: Se detuvo la ejecución autónoma tras 6 intentos fallidos consecutivos "
+                    "para evitar bucles improductivos y proteger los recursos de la máquina. "
+                    "Revisa los archivos generados y los diagnósticos emitidos para continuar."
+                )
+                self.memory.add_assistant_message(content=final_answer)
+                self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
+                self.set_state(AgentState.COMPLETED)
+                break
             # Comprobar si se solicitó cancelación
             if cancellation_token and cancellation_token.is_cancelled:
                 self.set_state(AgentState.CANCELLED)
@@ -524,9 +567,13 @@ class AgentOrchestrator:
                     known_syntax_error_files=known_syntax_error_files,
                     last_failed_tool_key=last_failed_tool_key,
                     consecutive_edit_failures=consecutive_edit_failures,
+                    recent_failed_tools=recent_failed_tools,
+                    consecutive_tool_failures=consecutive_tool_failures,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
+                    consecutive_tool_failures += 1
+                    recent_failed_tools.append(tool_name)
                     last_failed_tool_key = tool_call_key
                     self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
                     continue
@@ -630,7 +677,13 @@ class AgentOrchestrator:
                             failed_commands.clear()
                             files_modified_since_cmd_fail = True
 
-                if not is_success:
+                if is_success:
+                    consecutive_tool_failures = 0
+                    recent_failed_tools.clear()
+                    last_failed_tool_key = None
+                else:
+                    consecutive_tool_failures += 1
+                    recent_failed_tools.append(tool_name)
                     last_failed_tool_key = tool_call_key
                     total_tool_failures += 1
                     if iteration < self.max_iterations:
@@ -638,8 +691,6 @@ class AgentOrchestrator:
                             tool_result += "\n[SISTEMA AETHER]: La edición falló porque el texto 'target' no coincide con el archivo en disco. Usa 'read_file' para inspeccionar las líneas exactas o reescribe el módulo con 'write_file'."
                         else:
                             tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
-                else:
-                    last_failed_tool_key = None
 
                 self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
 

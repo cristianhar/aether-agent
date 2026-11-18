@@ -154,6 +154,14 @@ def edit_file(path: str, target: str, replacement: str) -> str:
     target_normalized = target.replace("\r\n", "\n")
     replacement_normalized = replacement.replace("\r\n", "\n")
 
+    if not target or not target.strip():
+        return (
+            f"Error de parámetro 'target': El parámetro 'target' no puede ser una cadena vacía ni contener solo espacios.\n"
+            f"• Si deseas REESCRIBIR o ACTUALIZAR el archivo completo '{path}', utiliza 'write_file(path=\"{path}\", content=...)'.\n"
+            f"• Si deseas INSERTAR código al inicio o final, incluye como 'target' las líneas reales existentes en el archivo usando 'read_file'.\n"
+            f"• NUNCA envíes target=''."
+        )
+
     count = content_normalized.count(target_normalized)
     note = ""
 

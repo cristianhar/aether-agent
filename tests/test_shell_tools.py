@@ -34,3 +34,20 @@ def test_command_safety_filtering():
     safe_ok2, _ = check_command_safety("git status")
     assert safe_ok2
 
+
+def test_name_error_diagnostic():
+    from tools.shell_tools import _generate_shell_diagnostics
+    from pathlib import Path
+
+    stdout = """
+    test_calc.py:12: in test_something
+        time.sleep(1)
+    E   NameError: name 'time' is not defined
+    """
+    hints = _generate_shell_diagnostics("pytest test_calc.py", Path.cwd(), 1, stdout, "")
+    assert hints is not None
+    assert "DIAGNÓSTICO AUTOMÁTICO DE NameError" in hints
+    assert "time" in hints
+    assert "test_calc.py" in hints
+    assert "import time" in hints
+

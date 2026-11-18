@@ -266,3 +266,21 @@ def test_circuit_breaker_blocks_blind_edit_ping_pong():
     assert blocked is True
     assert "CIRCUIT BREAKER - EDICIÓN A CIEGAS BLOQUEADA" in msg
     assert "read_file" in msg
+
+
+def test_circuit_breaker_blocks_multi_tool_ping_pong():
+    """El circuit breaker debe detectar y bloquear bucles oscilantes entre 2 herramientas."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    recent_tools = ["edit_file", "run_command", "edit_file"]
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="run_command",
+        args={"command": "pytest test_foo.py"},
+        recent_failed_tools=recent_tools,
+        consecutive_tool_failures=3
+    )
+    assert blocked is True
+    assert "CIRCUIT BREAKER - BUCLE ALTERNANTE DETECTADO" in msg
+    assert "edit_file" in msg
+    assert "run_command" in msg

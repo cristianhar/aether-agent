@@ -94,6 +94,28 @@ def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, st
             "• Para unittest: usa ÚNICAMENTE 'self.assertAlmostEqual(actual, esperado, places=2)'. Elimina 'pytest.approx' y 'import pytest'."
         )
 
+    # 6. Detección de NameError / módulo no importado con localización de archivo
+    raw_output = f"{stdout}\n{stderr}"
+    name_err_m = re.search(r"NameError:\s*name\s*['\"](\w+)['\"]\s*is not defined", raw_output, re.IGNORECASE)
+    if name_err_m:
+        missing_var = name_err_m.group(1)
+        loc_m = re.search(r"([a-zA-Z0-9_\-\.\/\\]+\.py):(\d+):(?:\s*in\s+|\s*NameError)", raw_output, re.IGNORECASE)
+        if not loc_m:
+            loc_m = re.search(r'File "([^"]+\.py)", line (\d+)', raw_output, re.IGNORECASE)
+
+        file_hint = ""
+        if loc_m:
+            err_file = Path(loc_m.group(1)).name
+            err_line = loc_m.group(2)
+            file_hint = f" en el archivo '{err_file}' (línea {err_line})"
+
+        hints.append(
+            f"💡 [DIAGNÓSTICO AUTOMÁTICO DE NameError]:\n"
+            f"• La variable o módulo '{missing_var}' no está definida{file_hint}.\n"
+            f"• ATENCIÓN: Asegúrate de editar el archivo CORRECTO{file_hint}. Si el fallo ocurrió en un archivo de test ('test_...py'), edita el archivo de test, NO el módulo probado.\n"
+            f"• Si '{missing_var}' es un módulo estándar de Python (ej: time, math, os, sys, json, random, re), agrega 'import {missing_var}' al principio de ese archivo."
+        )
+
     # 3. Detección de archivo Python inexistente en CWD pero existente en subcarpeta
     if ("can't open file" in combined or "no such file" in combined) and "python" in command.lower():
         try:
