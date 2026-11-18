@@ -827,9 +827,13 @@ class AgentOrchestrator:
 
                 # Guardián de Proactividad Autónoma: Evitar detenciones prematuras o preguntas pasivas
                 premature_question_markers = [
-                    "¿deseas que", "¿quieres que", "¿te gustaría que",
-                    "deseas que continúe", "deseas que siga", "¿continuamos?",
-                    "¿procedo a", "¿quieres que proceda", "puedo ayudarte"
+                    "deseas que", "quieres que", "te gustaría que",
+                    "deseas que continúe", "deseas que siga", "continuamos",
+                    "procedo a", "quieres que proceda", "puedo ayudarte",
+                    "siguiente paso", "cuál es el siguiente", "cómo deseas proceder",
+                    "qué debería hacer", "qué quieres que haga", "qué te gustaría",
+                    "indícame cómo proceder", "avísame si deseas", "algún cambio adicional",
+                    "en qué más puedo", "qué más deseas", "cómo quieres que continúe"
                 ]
                 content_lower = content.lower()
                 is_premature_deflection = any(m in content_lower for m in premature_question_markers)
@@ -855,9 +859,9 @@ class AgentOrchestrator:
                 tests_requested = any(w in prompt_lower for w in ["test", "tests", "prueba", "pruebas", "pytest"])
                 tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
                 missing_tests = tests_requested and not tests_exist
-                tests_pending_execution = tests_requested and tests_exist and not tests_executed_in_turn
+                tests_pending_execution = (tests_requested or tests_exist) and tests_exist and not tests_executed_in_turn
 
-                if (is_premature_deflection or missing_tests or tests_pending_execution) and proactive_prompts_sent < 1 and iteration < self.max_iterations - 1:
+                if (is_premature_deflection or missing_tests or tests_pending_execution) and proactive_prompts_sent < 2 and iteration < self.max_iterations - 1:
                     proactive_prompts_sent += 1
                     self.memory.add_assistant_message(content=content)
                     if tests_pending_execution:
@@ -866,6 +870,15 @@ class AgentOrchestrator:
                             "pero AÚN NO HAS EJECUTADO LOS TESTS en este turno.\n"
                             "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE ser la llamada a herramienta 'run_tests()' o "
                             "'run_command(command=\"pytest\")' para verificar que las pruebas pasen en verde antes de concluir la tarea."
+                        )
+                    elif is_premature_deflection:
+                        proactive_hint = (
+                            "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo de élite, "
+                            "NUNCA te detengas a medias para preguntar '¿Qué siguiente paso te gustaría que realice?' ni pidas confirmaciones al usuario.\n"
+                            "• Tu responsabilidad es completar y verificar la tarea íntegramente de forma autónoma. Si has implementado un módulo o componente, "
+                            "tu siguiente acción DEBE SER crear las pruebas unitarias exhaustivas correspondientes (ej: 'test_<modulo>.py') usando 'write_file' "
+                            "para validar todos los requisitos solicitados (incluyendo transacciones anidadas y casos límite), y correrlas con 'run_tests()'.\n"
+                            "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o preguntas pasivas. Emite la llamada a 'write_file' ahora."
                         )
                     else:
                         proactive_hint = (
