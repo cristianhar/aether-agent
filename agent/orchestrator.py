@@ -360,6 +360,23 @@ class AgentOrchestrator:
                 "Concluye tu turno ahora resumiendo la solución para el usuario en tu respuesta final."
             )
 
+        # Regla Anti-Bucle de Inspección Pasiva (Prevenir bucles repetitivos de read_file / get_file_outline)
+        if tool_name in ["read_file", "get_file_outline"]:
+            target_path_str = str(args.get("path", "") or "")
+            if target_path_str and action_history:
+                target_base = Path(target_path_str).name
+                recent_reads = [
+                    a for a in action_history[-4:]
+                    if (a.startswith("read_file:") or a.startswith("get_file_outline:"))
+                    and (target_path_str in a or (target_base and target_base in a))
+                ]
+                if len(recent_reads) >= 2:
+                    return True, (
+                        f"⛔ [CIRCUIT BREAKER - INSPECCIÓN REPETITIVA]: Ya has inspeccionado '{target_base}' repetidamente y su contenido "
+                        "completo está presente arriba en la conversación. No vuelvas a leerlo.\n"
+                        "• ACCIÓN OBLIGATORIA: Tu siguiente herramienta DEBE ser 'write_file' o 'edit_file' para corregir el código fuente o las pruebas."
+                    )
+
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
         # Regla 0: Detector Matemático Universal de Ciclos Periódicos (Periodos p=1, 2, 3)

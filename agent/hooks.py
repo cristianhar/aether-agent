@@ -87,6 +87,12 @@ class HookManager:
                         "Modificación de .gitignore bloqueada: La carpeta '.aether' debe permanecer ignorada por Git. "
                         "No intentes añadir .aether a Git. Concluye tu turno ahora e informa al usuario."
                     )
+            # Bloqueo de creación no solicitada de README.md
+            if target_path.lower().endswith("readme.md"):
+                return False, (
+                    "Creación de README.md omitida: El usuario no solicitó documentación README. "
+                    "Concéntrate exclusivamente en implementar y hacer pasar las pruebas del código fuente requerido."
+                )
 
         return True, "OK"
 
@@ -142,11 +148,23 @@ class HookManager:
                     f"• ACCIÓN OBLIGATORIA: Debes crear{missing_info} inmediatamente usando 'write_file' con la implementación completa solicitada.\n"
                     "• NUNCA elimines las pruebas ni las reemplaces con aserciones triviales como 'assertEqual(1+1, 2)'. Crea el código fuente faltante."
                 )
-            elif "TypeError" in result or "AssertionError" in result:
+            elif "TypeError" in result:
                 result += (
-                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO]: La prueba falló en la verificación de tipos o aserción.\n"
-                    "• Usa 'read_file' para inspeccionar la implementación real de la función que estás probando.\n"
-                    "• Ajusta los valores de prueba en el archivo de tests para que coincidan con la firma y lógica real del código."
+                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - ERROR DE TIPOS]:\n"
+                    "• La prueba falló en la verificación de tipos de datos o argumentos.\n"
+                    "• Revisa las firmas y parámetros de la función y actualiza el archivo con 'write_file' o 'edit_file'."
+                )
+            elif "AssertionError" in result:
+                assertion_detail = ""
+                if "True is not false" in result:
+                    assertion_detail = "\n• Discrepancia booleana: 'assertFalse(...)' falló porque la llamada retornó True. Si estás probando límites de solicitudes, verifica que el bucle haya enviado suficientes solicitudes (>= max_requests) para saturar el cupo antes de esperar False."
+                elif "False is not true" in result:
+                    assertion_detail = "\n• Discrepancia booleana: 'assertTrue(...)' falló porque la llamada retornó False inesperadamente."
+                result += (
+                    f"\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - ASERCIÓN FALLIDA]:{assertion_detail}\n"
+                    "• ACCIÓN OBLIGATORIA: Tu SIGUIENTE herramienta DEBE ser 'write_file' o 'edit_file'.\n"
+                    "• Corrige el archivo de pruebas ('test_*.py') o la lógica en el archivo fuente de inmediato.\n"
+                    "• NUNCA repitas la ejecución de pruebas ni hagas lecturas repetitivas sin antes haber modificado el código en disco."
                 )
 
         # Ejecutar hooks posteriores registrados dinámicamente
