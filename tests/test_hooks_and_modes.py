@@ -55,3 +55,49 @@ def test_hooks_post_tool_use_enriches_eoferror():
     enriched = hooks.post_tool_use("run_command", {"command": "python test.py"}, raw_error)
     assert "[HOOK POST-TOOL]" in enriched
     assert "EOFError" in enriched
+
+
+def test_hooks_dynamic_pre_hook_registration():
+    hooks = HookManager(mode="agent")
+
+    def custom_pre(tool_name, args):
+        if tool_name == "delete_file" and "protected" in args.get("path", ""):
+            return False, "No puedes borrar archivos protegidos"
+        return True, "OK"
+
+    hooks.register_pre_hook(custom_pre)
+
+    allowed, reason = hooks.pre_tool_use("delete_file", {"path": "safe.txt"})
+    assert allowed is True
+
+    allowed, reason = hooks.pre_tool_use("delete_file", {"path": "protected_secret.key"})
+    assert allowed is False
+    assert "protegidos" in reason
+
+
+def test_hooks_dynamic_post_hook_registration():
+    hooks = HookManager(mode="agent")
+
+    def custom_post(tool_name, args, result):
+        if tool_name == "write_file":
+            return result + "\n[TELEMETRIA_CUSTOM]: Archivo auditado"
+        return result
+
+    hooks.register_post_hook(custom_post)
+
+    out = hooks.post_tool_use("write_file", {"path": "main.py"}, "Éxito")
+    assert "[TELEMETRIA_CUSTOM]" in out
+
+
+def test_hooks_post_tool_use_test_success_guidance():
+    hooks = HookManager(mode="agent")
+    out = hooks.post_tool_use("run_command", {"command": "pytest"}, "Código de salida: 0\n2 passed in 0.05s")
+    assert "TODAS LAS PRUEBAS PASARON EXITOSAMENTE" in out
+    assert "is_completed=True" in out
+
+
+def test_hooks_post_tool_use_plan_completed_guidance():
+    hooks = HookManager(mode="agent")
+    out = hooks.post_tool_use("update_plan", {}, "🎉 COMPLETADO (Todos los hitos finalizados)")
+    assert "Plan completado y verificado en su totalidad" in out
+

@@ -5,24 +5,43 @@ Ejecuta validaciones automáticas antes y después de cada llamada a herramienta
 - PostToolUse: Auto-Linter sintáctico, chequeo de integridad y telemetría.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from agent.safety import check_command_safety
 
 
 class HookManager:
     def __init__(self, mode: str = "agent"):
         self.mode = mode  # "agent", "ask", "plan"
+        self._pre_hooks: List[Callable[[str, Dict[str, Any]], Tuple[bool, str]]] = []
+        self._post_hooks: List[Callable[[str, Dict[str, Any], str], str]] = []
 
     def set_mode(self, new_mode: str):
         if new_mode in ["agent", "ask", "plan"]:
             self.mode = new_mode
+
+    def register_pre_hook(self, hook_fn: Callable[[str, Dict[str, Any]], Tuple[bool, str]]):
+        """Registra un hook dinámico previo a la ejecución de herramientas."""
+        self._pre_hooks.append(hook_fn)
+
+    def register_post_hook(self, hook_fn: Callable[[str, Dict[str, Any], str], str]):
+        """Registra un hook dinámico posterior a la ejecución de herramientas."""
+        self._post_hooks.append(hook_fn)
 
     def pre_tool_use(self, tool_name: str, args: Dict[str, Any]) -> Tuple[bool, str]:
         """
         Hook ejecutado antes de cualquier herramienta.
         Retorna (autorizado: bool, motivo_o_error: str).
         """
-        # Restricciones en modo ASK (Solo lectura)
+        # 1. Ejecutar hooks registrados dinámicamente
+        for custom_hook in self._pre_hooks:
+            try:
+                allowed, reason = custom_hook(tool_name, args)
+                if not allowed:
+                    return False, reason
+            except Exception:
+                pass
+
+        # 2. Restricciones en modo ASK (Solo lectura)
         if self.mode == "ask":
             forbidden_in_ask = {"write_file", "edit_file", "delete_file", "move_file", "run_command", "create_checkpoint", "undo_checkpoint"}
             if tool_name in forbidden_in_ask:
@@ -77,5 +96,12 @@ class HookManager:
                     "• Para verificar scripts que esperan teclado, ejecuta: run_command(command='python -m py_compile <archivo>.py') o 'python -c \"import <modulo>\"'.\n"
                     "• NUNCA busques 'EOFError' dentro del archivo con edit_file; EOFError es un mensaje de la consola, no código fuente."
                 )
+
+        # Ejecutar hooks posteriores registrados dinámicamente
+        for custom_hook in self._post_hooks:
+            try:
+                result = custom_hook(tool_name, args, result)
+            except Exception:
+                pass
 
         return result
