@@ -251,3 +251,18 @@ def test_package_install_unblocks_failed_command():
         files_modified_since_cmd_fail=True
     )
     assert unblocked is False
+
+
+def test_circuit_breaker_blocks_blind_edit_ping_pong():
+    """El circuit breaker debe bloquear llamadas consecutivas de edit_file/apply_patch a ciegas."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="edit_file",
+        args={"path": "lru_cache.py", "target": "not found", "replacement": "bar"},
+        consecutive_edit_failures=2
+    )
+    assert blocked is True
+    assert "CIRCUIT BREAKER - EDICIÓN A CIEGAS BLOQUEADA" in msg
+    assert "read_file" in msg

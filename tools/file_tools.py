@@ -186,7 +186,8 @@ def edit_file(path: str, target: str, replacement: str) -> str:
                 )
             return (
                 f"Error: No se encontró el texto 'target' en '{path}'. "
-                "Asegúrate de incluir la indentación exacta y suficientes líneas circundantes para que sea unívoco."
+                f"El texto que enviaste no coincide exactamente con el archivo en disco. "
+                f"ACCIÓN OBLIGATORIA: Ejecuta 'read_file(path=\"{path}\")' para ver las líneas exactas e indentación antes de intentar editarlo nuevamente, o reescribe el archivo con 'write_file'."
             )
 
     if count > 1:

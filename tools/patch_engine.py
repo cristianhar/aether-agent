@@ -141,7 +141,10 @@ class PatchEngine:
                     return PatchResult(
                         filepath=path,
                         success=False,
-                        error=f"No se encontró el texto original en el archivo (similitud máxima: {best_ratio*100:.1f}% vs umbral {fuzzy_tolerance*100:.1f}%).",
+                        error=(
+                            f"No se encontró el texto original en el archivo (similitud máxima: {best_ratio*100:.1f}% vs umbral {fuzzy_tolerance*100:.1f}%). "
+                            f"ACCIÓN OBLIGATORIA: Ejecuta 'read_file(path=\"{path}\")' para ver el código real o reescribe el módulo con 'write_file'."
+                        ),
                         old_sha256=original_sha,
                     )
 

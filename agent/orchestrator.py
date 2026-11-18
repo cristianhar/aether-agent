@@ -260,6 +260,7 @@ class AgentOrchestrator:
         known_syntax_error_files: Optional[set] = None,
         last_failed_tool_key: Optional[str] = None,
         last_failed_command: Optional[str] = None,
+        consecutive_edit_failures: int = 0,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle:
@@ -308,6 +309,16 @@ class AgentOrchestrator:
             )
             return True, msg
 
+        # Regla 4: Bloqueo de bucle alternante de edición a ciegas (edit_file / apply_patch fallando >= 2 veces)
+        if tool_name in ("edit_file", "apply_patch") and consecutive_edit_failures >= 2:
+            target_p = args.get("path", "")
+            msg = (
+                f"⛔ [CIRCUIT BREAKER - EDICIÓN A CIEGAS BLOQUEADA]: Llevas {consecutive_edit_failures} intentos consecutivos fallidos modificando '{target_p}' porque el texto 'target' no coincide con el archivo en disco.\n"
+                "Está TERMINANTEMENTE PROHIBIDO seguir alternando entre 'edit_file' y 'apply_patch' a ciegas.\n"
+                f"• ACCIÓN OBLIGATORIA: Ejecuta 'read_file(path=\"{target_p}\")' para leer las líneas exactas e indentación real, o reescribe el módulo completo usando 'write_file'."
+            )
+            return True, msg
+
         return False, ""
 
     def run_turn(self, user_prompt: str, cancellation_token: Optional[CancellationToken] = None) -> str:
@@ -334,6 +345,7 @@ class AgentOrchestrator:
         known_syntax_error_files: set = set()
         last_assertion_error: Optional[str] = None
         assertion_error_repeat_count: int = 0
+        consecutive_edit_failures: int = 0
 
         for iteration in range(1, self.max_iterations + 1):
             # Comprobar si se solicitó cancelación
@@ -511,6 +523,7 @@ class AgentOrchestrator:
                     files_modified_since_cmd_fail=files_modified_since_cmd_fail,
                     known_syntax_error_files=known_syntax_error_files,
                     last_failed_tool_key=last_failed_tool_key,
+                    consecutive_edit_failures=consecutive_edit_failures,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
@@ -548,13 +561,20 @@ class AgentOrchestrator:
                         files_modified_since_cmd_fail = True
                         failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
                         last_failed_tool_key = None
+                        consecutive_edit_failures = 0
                         if target_path:
                             known_syntax_error_files.discard(target_path)
                             known_syntax_error_files.discard(Path(target_path).name)
-                    elif has_syntax_err and target_path:
-                        known_syntax_error_files.add(target_path)
-                        known_syntax_error_files.add(Path(target_path).name)
+                    else:
+                        if tool_name in ["edit_file", "apply_patch"]:
+                            consecutive_edit_failures += 1
+                        if has_syntax_err and target_path:
+                            known_syntax_error_files.add(target_path)
+                            known_syntax_error_files.add(Path(target_path).name)
                         last_failed_tool_key = tool_call_key
+                elif tool_name in ["read_file", "list_directory", "search_codebase"]:
+                    if is_success:
+                        consecutive_edit_failures = 0
 
                 elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:
                     files_modified_since_cmd_fail = True
@@ -614,7 +634,10 @@ class AgentOrchestrator:
                     last_failed_tool_key = tool_call_key
                     total_tool_failures += 1
                     if iteration < self.max_iterations:
-                        tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
+                        if tool_name in ["edit_file", "apply_patch"]:
+                            tool_result += "\n[SISTEMA AETHER]: La edición falló porque el texto 'target' no coincide con el archivo en disco. Usa 'read_file' para inspeccionar las líneas exactas o reescribe el módulo con 'write_file'."
+                        else:
+                            tool_result += "\n[SISTEMA AETHER]: Se detectó un error en la ejecución. Analiza la causa raíz, aplica la corrección con edit_file, apply_patch o write_file y vuelve a probar."
                 else:
                     last_failed_tool_key = None
 
