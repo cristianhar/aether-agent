@@ -100,3 +100,19 @@ def test_delegate_test_dispatch(monkeypatch):
     res = delegate_test("pytest", "tests/test_agent_tools.py")
     assert "INFORME DEL SUBAGENTE TESTER" in res
     assert "Exit code 0" in res
+
+
+def test_remember_and_search_memory_tools():
+    from tools.agent_tools import remember_fact, search_memory, list_memories
+
+    rem_res = remember_fact("token_ttl", "El TTL de los tokens de autenticación es de 3600 segundos", category="auth")
+    assert "MEMORIA GUARDADA" in rem_res
+    assert "token_ttl" in rem_res
+
+    search_res = search_memory("autenticación")
+    assert "token_ttl" in search_res
+    assert "3600" in search_res
+
+    list_res = list_memories(category="auth")
+    assert "token_ttl" in list_res
+

@@ -182,3 +182,66 @@ def get_project_instructions(path: Optional[str] = None) -> str:
         f"{instructions_text}\n"
         f"</project_instructions>"
     )
+
+
+def remember_fact(key: str, content: str, category: str = "project") -> str:
+    """
+    [MEMORIA SEMÁNTICA PERSISTENTE]
+    Almacena un hecho, convención técnica o decisión arquitectónica en SQLite con embeddings vectoriales.
+    Persiste entre sesiones del agente y se puede consultar mediante 'search_memory'.
+    """
+    from agent.session import SessionManager
+    from agent.embeddings import get_local_embedding
+
+    embedding = get_local_embedding(f"{key}: {content}")
+    sm = SessionManager()
+    success = sm.store_semantic_memory(key=key, content=content, category=category, embedding=embedding)
+
+    mode_info = "con vectorización semántica local" if embedding else "con coincidencia léxica determinista"
+    if success:
+        return f"🧠 [MEMORIA GUARDADA]: Se registró el hecho clave '{key}' en la categoría '{category}' ({mode_info})."
+    return f"❌ Error: No se pudo almacenar el hecho '{key}' en la base de datos de sesiones."
+
+
+def search_memory(query: str, top_k: int = 3, category: Optional[str] = None) -> str:
+    """
+    [BÚSQUEDA SEMÁNTICA VECTORIAL]
+    Busca hechos, decisiones y reglas almacenadas en la memoria semántica persistente
+    utilizando similitud de coseno o superposición léxica.
+    """
+    from agent.session import SessionManager
+    from agent.embeddings import get_local_embedding
+
+    query_emb = get_local_embedding(query)
+    sm = SessionManager()
+    matches = sm.search_semantic_memory(query=query, top_k=top_k, category=category, query_embedding=query_emb)
+
+    if not matches:
+        return f"ℹ️ No se encontraron recuerdos en la memoria semántica relacionados con: '{query}'."
+
+    lines = [f"🧠 **Resultados de Memoria Semántica para '{query}':**"]
+    for m in matches:
+        lines.append(f"• **[{m['category'].upper()}] {m['key']}** (Relevancia: {m['score']}):\n  {m['content']}")
+
+    return "\n\n".join(lines)
+
+
+def list_memories(category: Optional[str] = None) -> str:
+    """
+    Lista todos los hechos y directivas almacenadas en la memoria semántica persistente.
+    """
+    from agent.session import SessionManager
+
+    sm = SessionManager()
+    memories = sm.get_all_semantic_memories(category=category)
+
+    if not memories:
+        cat_suffix = f" en la categoría '{category}'" if category else ""
+        return f"ℹ️ No hay recuerdos almacenados en la memoria persistente{cat_suffix}."
+
+    lines = [f"🧠 **Memoria Semántica Persistente ({len(memories)} registros):**"]
+    for m in memories:
+        lines.append(f"• **[{m['category'].upper()}] {m['key']}** (Actualizado: {m['updated_at'][:19]}):\n  {m['content']}")
+
+    return "\n\n".join(lines)
+

@@ -356,6 +356,21 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
             console.print(f"[bold green]✅ Contexto compactado exitosamente:[/] {tokens_before} ➔ {tokens_after} tokens (~{saved} tokens liberados en VRAM).")
             continue
 
+        elif user_input.startswith("/memory"):
+            mem_arg = user_input[len("/memory"):].strip()
+            from tools.agent_tools import list_memories, search_memory
+            if not mem_arg:
+                res = list_memories()
+                console.print(Panel(res, title="[bold cyan]🧠 Memoria Semántica Persistente[/bold cyan]", border_style="cyan"))
+            elif mem_arg.startswith("search "):
+                q = mem_arg[len("search "):].strip()
+                res = search_memory(q)
+                console.print(Panel(res, title=f"[bold cyan]🔍 Búsqueda Semántica: '{q}'[/bold cyan]", border_style="cyan"))
+            else:
+                res = search_memory(mem_arg)
+                console.print(Panel(res, title=f"[bold cyan]🔍 Búsqueda Semántica: '{mem_arg}'[/bold cyan]", border_style="cyan"))
+            continue
+
         elif user_input == "/help":
             help_text = """
 ### 🛠️ Comandos Especiales Slash (`/`):
@@ -368,6 +383,7 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
 - **/export [archivo]**: Exporta la sesión completa y código generado a un documento Markdown.
 - **/sessions**: Lista las sesiones persistentes almacenadas en SQLite (.aether/sessions.db).
 - **/resume <id>**: Reanuda una sesión previa restaurando el historial completo de mensajes.
+- **/memory [search <término>]**: Consulta o busca hechos persistentes y decisiones en la memoria semántica.
 - **/telemetry**: Muestra métricas de rendimiento, latencia y tasa de éxito de herramientas.
 - **/status**: Muestra el estado de archivos en Git y telemetría de tokens en VRAM.
 - **/undo**: Revierte al último checkpoint seguro en 1 segundo.

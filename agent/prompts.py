@@ -40,6 +40,9 @@ Dispones de herramientas nativas para interactuar con el entorno:
 15. `undo_checkpoint()`: Revierte al estado anterior de forma instantánea si una modificación falla.
 16. `get_git_diff()`: Muestra las diferencias exactas de código pendientes de guardar.
 17. `get_git_status()`: Reporta el estado de los archivos en el repositorio Git.
+18. `update_plan(plan_steps, current_step, acceptance_criteria)`: [PLANIFICACIÓN INTERACTIVA] Estructura tareas complejas en hitos numerados con casillas de verificación visibles en `.aether/plans/plan_activo.md`.
+19. `remember_fact(key, content, category)`: [MEMORIA SEMÁNTICA PERSISTENTE] Almacena hechos arquitectónicos, decisiones clave o reglas del usuario en SQLite con embeddings vectoriales locales para recordarlos entre diferentes sesiones.
+20. `search_memory(query, top_k)`: [BÚSQUEDA SEMÁNTICA] Busca recuerdos, contexto histórico y decisiones arquitectónicas previas en milisegundos mediante similitud de embeddings.
 </tools_catalog>
 
 <agent_workflow>

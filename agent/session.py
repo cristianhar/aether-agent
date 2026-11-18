@@ -11,6 +11,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Dict, List, Optional
 import uuid
+from agent.embeddings import cosine_similarity, lexical_overlap_score
 
 
 class SessionManager:
@@ -82,6 +83,18 @@ class SessionManager:
                 files_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions (session_id)
+            )
+            """)
+            # Tabla de memoria semántica persistente (RAG local con SQLite)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS semantic_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                category TEXT DEFAULT 'general',
+                content TEXT NOT NULL,
+                embedding_json TEXT DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
             """)
 
@@ -162,3 +175,96 @@ class SessionManager:
                 "INSERT OR REPLACE INTO checkpoints (session_id, snapshot_id, description, files_json, created_at) VALUES (?, ?, ?, ?, ?)",
                 (session_id, snapshot_id, description, json.dumps(files), now)
             )
+
+    def store_semantic_memory(
+        self,
+        key: str,
+        content: str,
+        category: str = "general",
+        embedding: Optional[List[float]] = None
+    ) -> bool:
+        """
+        Almacena o actualiza un hecho conceptual en la memoria semántica persistente.
+        Guarda el embedding vectorial si está disponible para búsqueda por similitud.
+        """
+        now = datetime.now().isoformat()
+        emb_json = json.dumps(embedding or [])
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO semantic_memory (key, category, content, embedding_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    category = excluded.category,
+                    content = excluded.content,
+                    embedding_json = excluded.embedding_json,
+                    updated_at = excluded.updated_at
+                """,
+                (key.strip(), category.strip(), content.strip(), emb_json, now, now)
+            )
+        return True
+
+    def search_semantic_memory(
+        self,
+        query: str,
+        top_k: int = 5,
+        category: Optional[str] = None,
+        query_embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca hechos en la memoria semántica mediante similitud de coseno o superposición léxica.
+        Retorna los mejores top_k resultados ordenados por relevancia.
+        """
+        with self._connection() as conn:
+            if category:
+                rows = conn.execute(
+                    "SELECT key, category, content, embedding_json, created_at, updated_at FROM semantic_memory WHERE category = ?",
+                    (category,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT key, category, content, embedding_json, created_at, updated_at FROM semantic_memory"
+                ).fetchall()
+
+        results = []
+        for r in rows:
+            target_text = f"{r['key']} {r['content']}"
+            target_emb = json.loads(r["embedding_json"])
+
+            if query_embedding and target_emb and len(query_embedding) == len(target_emb):
+                score = cosine_similarity(query_embedding, target_emb)
+            else:
+                score = lexical_overlap_score(query, target_text)
+
+            if score > 0.05:
+                results.append({
+                    "key": r["key"],
+                    "category": r["category"],
+                    "content": r["content"],
+                    "score": round(score, 4),
+                    "created_at": r["created_at"],
+                    "updated_at": r["updated_at"],
+                })
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:top_k]
+
+    def get_all_semantic_memories(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Recupera todos los hechos almacenados en la memoria semántica."""
+        with self._connection() as conn:
+            if category:
+                rows = conn.execute(
+                    "SELECT key, category, content, created_at, updated_at FROM semantic_memory WHERE category = ? ORDER BY updated_at DESC",
+                    (category,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT key, category, content, created_at, updated_at FROM semantic_memory ORDER BY updated_at DESC"
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_semantic_memory(self, key: str) -> bool:
+        """Elimina un recuerdo específico por clave."""
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM semantic_memory WHERE key = ?", (key.strip(),))
+            return cursor.rowcount > 0

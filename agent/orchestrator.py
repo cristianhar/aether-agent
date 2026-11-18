@@ -30,10 +30,13 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
         "read_file", "search_codebase", "list_directory", "get_file_outline",
         "get_repo_map", "get_diagnostics", "get_process_status",
         "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
-        "list_mcp_tools", "delegate_research", "get_plan"
+        "list_mcp_tools", "delegate_research", "get_plan", "search_memory", "list_memories"
     ]:
         category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
+
+    if name in ["remember_fact", "update_plan"]:
+        return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.AGENT_AUTONOMOUS
 
     if name in ["write_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
         return ToolCategory.FILESYSTEM, PermissionLevel.WORKSPACE_WRITE

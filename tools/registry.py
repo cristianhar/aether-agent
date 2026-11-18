@@ -16,7 +16,15 @@ from tools.web_tools import search_web, fetch_web_page
 from tools.diagnostics import get_diagnostics
 from tools.patch_engine import PatchEngine
 from tools.process_manager import ProcessManager
-from tools.agent_tools import update_plan, get_plan, request_approval, get_project_instructions
+from tools.agent_tools import (
+    update_plan,
+    get_plan,
+    request_approval,
+    get_project_instructions,
+    remember_fact,
+    search_memory,
+    list_memories
+)
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
 from tools.mcp_client import list_mcp_tools, call_mcp_tool_wrapper
@@ -559,6 +567,72 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "remember_fact",
+            "description": "[MEMORIA SEMÁNTICA PERSISTENTE] Almacena hechos arquitectónicos, decisiones clave o reglas del usuario en SQLite con embeddings vectoriales locales para recordarlos entre diferentes sesiones.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Identificador único o concepto clave (ej: 'auth_jwt_algorithm')."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Detalle técnico, decisión o regla a recordar."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Categoría conceptual (ej: 'project', 'architecture', 'user_preference')."
+                    }
+                },
+                "required": ["key", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_memory",
+            "description": "[BÚSQUEDA SEMÁNTICA VECTORIAL] Busca hechos, contexto histórico y decisiones arquitectónicas previas en milisegundos mediante similitud de embeddings.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Pregunta o término conceptual a buscar en la memoria semántica."
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Número máximo de resultados a recuperar (por defecto 3)."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filtrar por categoría opcional."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_memories",
+            "description": "[LISTADO DE MEMORIA] Lista todas las directivas y hechos almacenados en la memoria semántica persistente.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Filtrar por categoría opcional."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "request_approval",
             "description": "Solicita autorización explícita al desarrollador antes de realizar una acción de alto impacto o destructiva.",
             "parameters": {
@@ -823,6 +897,9 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "safe_undo_checkpoint": safe_undo_checkpoint_tool,
     "update_plan": update_plan,
     "get_plan": get_plan,
+    "remember_fact": remember_fact,
+    "search_memory": search_memory,
+    "list_memories": list_memories,
     "request_approval": request_approval,
     "get_project_instructions": get_project_instructions,
     "find_definition": find_definition,
