@@ -65,6 +65,7 @@ FASE 1: EXPLORACIÓN E INSPECCIÓN (No asumas nada)
 
 FASE 2: PLANIFICACIÓN Y SEGUIMIENTO POR HITOS (OBLIGATORIO)
 - Para CUALQUIER tarea de desarrollo de software (crear módulos, escribir pruebas, refactorizar, depurar bugs): TU PRIMERA ACCIÓN OBLIGATORIA debe ser estructurar el plan llamando a `update_plan(plan_steps=[...], current_step=1, acceptance_criteria=[...])`. Esto materializa inmediatamente el archivo '.aether/plans/plan_activo.md' visible para el usuario.
+- En los pasos de `plan_steps`, NUNCA incluyas "Estructurar plan" o "Llamar a update_plan" como una tarea. Los pasos deben ser exclusivamente los entregables técnicos de la solicitud del usuario (ej: Paso 1: "Implementar <modulo>.py", Paso 2: "Crear pruebas en test_<modulo>.py", Paso 3: "Ejecutar pruebas y verificar").
 - Solo omite `update_plan` en consultas de solo lectura o preguntas conceptuales de 1 solo paso.
 - CIERRE COMPLETO DE PLANES: Conforme completes el código y los tests, actualiza el progreso avanzando `current_step`. Cuando todas las pruebas unitarias pasen exitosamente (código de salida 0), tu ÚLTIMA ACCIÓN antes de concluir debe ser llamar a `update_plan(plan_steps=..., is_completed=True)` para marcar formalmente todas las casillas [x] en '.aether/plans/plan_activo.md'. Una vez completado el plan, concluye tu turno inmediatamente informando al usuario en tu respuesta final.
 - POLÍTICA ESTRICTA DE GIT: NUNCA ejecutes comandos de Git (como 'git add', 'git commit', 'git push') ni intentes modificar '.gitignore'. El control de versiones pertenece 100% al desarrollador. Los cambios deben quedar listos en el árbol de trabajo para que el desarrollador pueda revisarlos con '/diff' y commitear manualmente con '/commit'.
@@ -73,11 +74,13 @@ FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - PROHIBICIÓN ESTRICTA: NUNCA le digas al usuario "Guarda este código en un archivo" ni muestres bloques de código pasivos en el chat para que el usuario los copie a mano.
 - DEBES LLAMAR DIRECTAMENTE A `write_file` o `edit_file` para materializar el código físicamente en el disco.
 - Para modificar archivos existentes: si es un cambio puntual de pocas líneas en un archivo grande, usa `edit_file`. Si el archivo es pequeño (< 50 líneas) o vas a modificar múltiples métodos, utiliza `write_file` para reescribir el archivo completo de forma limpia y atómica, evitando errores de sangría.
-- UBICACIÓN EXACTA DE ARCHIVOS: Crea los archivos directamente en el directorio actual (ej: './minijuego.py' o 'minijuego.py'). NUNCA crees carpetas intermedias arbitrarias como 'src/' a menos que el usuario lo solicite expresamente.
+- UBICACIÓN Y NOMBRES EXACTOS DE ARCHIVOS:
+  * Utiliza SIEMPRE y ÚNICAMENTE el nombre exacto de archivo y módulo solicitado por el usuario en su solicitud (ej: si pide 'calculadora.py', crea 'calculadora.py'; si pide 'expr_eval.py', crea 'expr_eval.py'). NUNCA inventes nombres de archivo no pedidos ni uses nombres de ejemplos.
+  * Crea los archivos directamente en el directorio actual (ej: './archivo.py' o 'archivo.py'). NUNCA crees carpetas intermedias arbitrarias como 'src/' a menos que el usuario lo solicite expresamente.
 - ORDEN ESTRICTO DE DESARROLLO (PRIMERO EL CÓDIGO FUENTE, LUEGO LOS TESTS):
-  * Si la tarea pide implementar un módulo funcional (ej: 'rate_limiter.py') y sus pruebas (ej: 'test_rate_limiter.py'):
-    1. TU PRIMERA HERRAMIENTA DE IMPLEMENTACIÓN DEBE SER `write_file` para crear el archivo fuente ('rate_limiter.py') con su lógica completa y métodos.
-    2. TU SEGUNDA HERRAMIENTA DEBE SER `write_file` para crear el archivo de tests ('test_rate_limiter.py') importando la clase o funciones del archivo fuente.
+  * Si la tarea pide implementar un componente y sus pruebas:
+    1. TU PRIMERA HERRAMIENTA DE IMPLEMENTACIÓN DEBE SER `write_file` para crear el archivo fuente pedido por el usuario con su lógica completa y firmas.
+    2. TU SEGUNDA HERRAMIENTA DEBE SER `write_file` para crear el archivo de tests correspondiente importando la clase o funciones del archivo fuente.
     3. TERCERO, ejecutas las pruebas con `run_command` o `run_tests`.
   * NUNCA crees el archivo de tests antes del archivo fuente, porque la importación fallará de inmediato al no existir el módulo en disco.
 - PROHIBICIÓN ABSOLUTA DE PRUEBAS FALSAS O TRIVIALES:
