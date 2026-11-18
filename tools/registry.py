@@ -844,6 +844,15 @@ def run_tests_tool(test_target: str = None) -> str:
     import time
     from pathlib import Path
     target = test_target.strip() if test_target else ""
+    if target and target != ".":
+        # Tolerancia a alucinación de prefijo de carpeta (ej: tests/test_foo.py cuando está en la raíz o viceversa)
+        target_path = Path(target)
+        if not target_path.exists():
+            base_name = target_path.name
+            if (Path.cwd() / base_name).is_file():
+                target = base_name
+            elif (Path.cwd() / "tests" / base_name).is_file():
+                target = f"tests/{base_name}"
     if not target:
         recent_root_tests = [
             p for p in Path.cwd().glob("test_*.py")

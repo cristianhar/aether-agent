@@ -182,5 +182,38 @@ def test_edit_file_target_none_forwards_to_write_file(tmp_path):
     assert f.read_text(encoding="utf-8") == "new content"
 
 
+def test_edit_file_target_none_auto_matches_candidate_line(tmp_path):
+    """Verifica que un fragmento con target=None encuentre automáticamente la línea candidata unívoca sin destruir el archivo."""
+    f = tmp_path / "test_store.py"
+    initial_code = (
+        "def test_rollback():\n"
+        "    store = Store()\n"
+        "    store.begin()\n"
+        "    store.set('a', 2)\n"
+        "    store.rollback(level=level1)\n"
+        "    assert store.get('a') == 1\n"
+    )
+    f.write_text(initial_code, encoding="utf-8")
+
+    res = edit_file(str(f), target=None, replacement="    store.rollback()\n")
+    assert "actualizado correctamente" in res
+    new_code = f.read_text(encoding="utf-8")
+    assert "store.rollback(level=level1)" not in new_code
+    assert "store.rollback()" in new_code
+    assert "def test_rollback():" in new_code
+    assert "assert store.get('a') == 1" in new_code
+
+
+def test_edit_file_target_none_small_snippet_rejected_safely(tmp_path):
+    """Verifica que un fragmento pequeño sin coincidencia unívoca sea rechazado para evitar borrar el archivo."""
+    f = tmp_path / "large_store.py"
+    initial_code = "class Store:\n" + "    # comment\n" * 50
+    f.write_text(initial_code, encoding="utf-8")
+
+    res = edit_file(str(f), target=None, replacement="x = 1\n")
+    assert "Falta el parámetro 'target' obligatorio" in res
+    assert f.read_text(encoding="utf-8") == initial_code
+
+
 
 

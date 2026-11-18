@@ -503,9 +503,10 @@ class AgentOrchestrator:
                                             f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
                                         )
                             else:
+                                prompt_test_files = re.findall(r"['\"](test_[a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
+                                test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else "el archivo de pruebas correspondiente ('test_<modulo>.py')"
                                 cycle_hint = (
-                                    "• El archivo ya fue creado o guardado. Si aún no has creado el archivo de pruebas ('test_*.py'), "
-                                    "tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear el archivo de pruebas.\n"
+                                    f"• El archivo ya fue creado o guardado. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
                                     "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
                                     f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
                                 )

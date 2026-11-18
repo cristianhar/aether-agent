@@ -296,7 +296,7 @@ def write_file(path: str, content: str = "") -> str:
 
 
 def edit_file(
-    path: str,
+    path: str = "",
     target: Optional[str] = None,
     replacement: Optional[str] = None,
     content: Optional[str] = None,
@@ -306,8 +306,14 @@ def edit_file(
     """
     Reemplaza el bloque 'target' por 'replacement' dentro del archivo.
     Incluye fallback con Fuzzy Matching inteligente, Auto-Linter sintáctico
-    y auto-rescate a reescritura completa si target no es provisto.
+    y detección automática de target cuando se omite para evitar sobreescrituras destructivas.
     """
+    if not path or not path.strip():
+        return (
+            "Error en los parámetros de 'edit_file': Falta el argumento 'path'.\n"
+            "• ACCIÓN OBLIGATORIA: Proporciona 'path' con la ruta del archivo que deseas editar."
+        )
+
     p_clean = path.strip().strip("'\"")
     if p_clean.startswith("<") and p_clean.endswith(">"):
         return f"Error: '{p_clean}' es un marcador de posición, no una ruta de archivo real."
@@ -322,26 +328,31 @@ def edit_file(
     if file_path.is_dir():
         return f"Error: '{path}' es un directorio."
 
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            file_content = f.read()
+    except Exception as e:
+        return f"Error al leer el archivo '{path}': {str(e)}"
+
+    rep_text = replacement if replacement is not None else content
+    if rep_text is None:
+        rep_text = ""
+
     # Soporte tolerante para modelos locales que envían start_line/end_line a edit_file
     if start_line is not None:
-        if target is None and (replacement is None or not str(replacement).strip()):
+        if target is None and not rep_text.strip():
             return read_file(path=path, start_line=start_line, end_line=end_line or start_line)
-        elif target is None and replacement is not None:
+        elif target is None and rep_text.strip():
             try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
+                lines = file_content.splitlines(keepends=True)
                 s_idx = max(0, start_line - 1)
                 e_idx = min(len(lines), end_line or start_line)
                 target = "".join(lines[s_idx:e_idx])
             except Exception:
                 pass
 
-    # Auto-rescate: Si target no fue especificado (None) pero se envió content/replacement, reescribir con write_file
-    rep_text = replacement if replacement is not None else content
-    if target is None and rep_text and rep_text.strip():
-        return write_file(path=path, content=rep_text)
-
-    if not target or not target.strip():
+    # Si target fue explícitamente enviado como cadena vacía:
+    if target is not None and not str(target).strip():
         return (
             f"Error de parámetro 'target': El parámetro 'target' no puede ser una cadena vacía ni contener solo espacios.\n"
             f"• Si deseas REESCRIBIR o ACTUALIZAR el archivo completo '{path}', utiliza 'write_file(path=\"{path}\", content=...)'.\n"
@@ -349,11 +360,40 @@ def edit_file(
             f"• NUNCA envíes target=''."
         )
 
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            file_content = f.read()
-    except Exception as e:
-        return f"Error al leer el archivo '{path}': {str(e)}"
+    # Si target fue omitido (target is None):
+    if target is None:
+        # 1. Si el archivo actual está vacío o rep_text es una reescritura de tamaño comparable (>= 70%)
+        if not file_content.strip() or len(rep_text) >= len(file_content) * 0.7:
+            return write_file(path=path, content=rep_text)
+
+        # 2. Búsqueda inteligente de target unívoco para fragmentos (ej: 'store.rollback()')
+        rep_stripped = rep_text.strip()
+        lines = file_content.splitlines()
+        candidate_target = None
+        if rep_stripped:
+            prefix = ""
+            if "(" in rep_stripped:
+                prefix = rep_stripped.split("(")[0].strip()
+            elif "=" in rep_stripped:
+                prefix = rep_stripped.split("=")[0].strip()
+
+            if prefix and len(prefix) >= 3:
+                matching_lines = [
+                    l for l in lines
+                    if prefix in l and l.strip() != rep_stripped
+                ]
+                if len(matching_lines) == 1:
+                    candidate_target = matching_lines[0]
+
+        if candidate_target:
+            target = candidate_target
+        else:
+            return (
+                f"❌ Error en 'edit_file': Falta el parámetro 'target' obligatorio.\n"
+                f"• El archivo '{path}' contiene {len(file_content)} caracteres. No se puede reemplazar todo el archivo por un fragmento de solo {len(rep_text)} caracteres porque destruiría el código existente.\n"
+                f"• ACCIÓN OBLIGATORIA: Proporciona 'target' con el texto exacto que deseas reemplazar dentro de '{path}', y 'replacement' con el nuevo texto.\n"
+                f"• Si deseas REESCRIBIR todo el archivo, debes usar 'write_file(path=\"{path}\", content=...)' enviando la clase o módulo completo."
+            )
 
     content_normalized = file_content.replace("\r\n", "\n")
     target_normalized = target.replace("\r\n", "\n")
