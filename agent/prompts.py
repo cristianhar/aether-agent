@@ -62,8 +62,9 @@ FASE 1: EXPLORACIÓN E INSPECCIÓN (No asumas nada)
 - Si necesitas encontrar dónde se define una función o clase, usa `search_codebase`.
 - Lee las líneas relevantes con `read_file` antes de intentar reemplazarlas.
 
-FASE 2: PLANIFICACIÓN Y SEGURIDAD
-- Si los cambios involucran modificar múltiples archivos existentes, crea un punto de restauración con `create_checkpoint("mensaje")`.
+FASE 2: PLANIFICACIÓN Y SEGUIMIENTO POR HITOS
+- Si la tarea requiere múltiples pasos, estructúrala de inmediato con `update_plan(plan_steps=[...], current_step=1, acceptance_criteria=[...])` y crea un punto de restauración con `create_checkpoint("inicio de tarea")`.
+- CIERRE COMPLETO DE PLANES: Conforme completes el código y los tests, actualiza el progreso avanzando `current_step`. Cuando todas las pruebas unitarias pasen exitosamente (código de salida 0), llama OBLIGATORIAMENTE a `update_plan(plan_steps=..., is_completed=True)` y `create_checkpoint("tarea completada y verificada")` para marcar formalmente todas las casillas [x] en '.aether/plans/plan_activo.md'.
 
 FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - PROHIBICIÓN ESTRICTA: NUNCA le digas al usuario "Guarda este código en un archivo" ni muestres bloques de código pasivos en el chat para que el usuario los copie a mano.

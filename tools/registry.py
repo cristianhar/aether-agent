@@ -547,6 +547,10 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Criterios observables que definirán que la tarea está completa."
+                    },
+                    "is_completed": {
+                        "type": "boolean",
+                        "description": "Indica si todos los pasos y criterios han sido completados y verificados con éxito."
                     }
                 },
                 "required": ["plan_steps"]

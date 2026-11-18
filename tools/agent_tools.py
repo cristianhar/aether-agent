@@ -28,6 +28,7 @@ def update_plan(
     plan_steps: List[str],
     current_step: int = 1,
     acceptance_criteria: Optional[List[str]] = None,
+    is_completed: bool = False,
 ) -> str:
     """
     Superpoder: Actualiza el plan de ejecución y criterios de aceptación visibles para el usuario.
@@ -35,10 +36,12 @@ def update_plan(
     Sincroniza tanto el JSON estructurado (.aether/current_plan.json) como el artefacto Markdown (.aether/plans/plan_activo.md).
     """
     global _CURRENT_PLAN
+    completed = is_completed or (len(plan_steps) > 0 and current_step > len(plan_steps))
     _CURRENT_PLAN = {
         "steps": plan_steps,
-        "current_step": current_step,
+        "current_step": len(plan_steps) if completed else current_step,
         "acceptance_criteria": acceptance_criteria or [],
+        "is_completed": completed,
     }
 
     aether_dir = Path.cwd() / ".aether"
@@ -54,15 +57,16 @@ def update_plan(
         pass
 
     # 2. Generar y guardar artefacto Markdown interactivo en .aether/plans/plan_activo.md
+    status_label = "🎉 COMPLETADO (Todos los hitos finalizados con éxito)" if completed else f"Paso {current_step} de {len(plan_steps)}"
     md_lines = [
         "# 📋 Plan de Ejecución Activo — AETHER",
         "",
-        f"**Estado General:** Paso {current_step} de {len(plan_steps)}",
+        f"**Estado General:** {status_label}",
         "",
         "## 🎯 Hitos y Tareas de Implementación",
     ]
     for i, step in enumerate(plan_steps, 1):
-        if i < current_step:
+        if completed or i < current_step:
             box = "[x]"
             tag = "✅"
         elif i == current_step:
@@ -77,7 +81,9 @@ def update_plan(
         md_lines.append("")
         md_lines.append("## 🔍 Criterios de Aceptación y Verificación")
         for crit in acceptance_criteria:
-            md_lines.append(f"- [ ] {crit}")
+            crit_box = "[x]" if completed else "[ ]"
+            crit_tag = " ✅" if completed else ""
+            md_lines.append(f"- {crit_box} {crit}{crit_tag}")
 
     md_content = "\n".join(md_lines) + "\n"
     plan_md_file = plans_dir / "plan_activo.md"
@@ -89,7 +95,7 @@ def update_plan(
 
     lines = ["📋 **Plan de Ejecución Actualizado:**"]
     for i, step in enumerate(plan_steps, 1):
-        if i < current_step:
+        if completed or i < current_step:
             status = "✅"
         elif i == current_step:
             status = "⏳ [EN PROGRESO]"
@@ -100,7 +106,11 @@ def update_plan(
     if acceptance_criteria:
         lines.append("\n🎯 **Criterios de Aceptación:**")
         for crit in acceptance_criteria:
-            lines.append(f"  • {crit}")
+            crit_mark = "✅ " if completed else "• "
+            lines.append(f"  {crit_mark}{crit}")
+
+    if completed:
+        lines.append("\n🏆 **¡Todos los pasos del plan han sido completados y verificados!**")
 
     lines.append(f"\n📄 *Artefacto Markdown sincronizado en:* `{plan_md_file}`")
     return "\n".join(lines)

@@ -23,6 +23,16 @@ def test_update_plan():
     assert "- [ ] **Paso 3:** Verificar tests ⬜" in plan_md
     assert "- [ ] Todos los tests pasan en verde" in plan_md
 
+    # Verificar finalización completa del plan
+    res_completed = update_plan(plan_steps=steps, is_completed=True, acceptance_criteria=criteria)
+    assert "¡Todos los pasos del plan han sido completados y verificados!" in res_completed
+    plan_md_completed = get_plan()
+    assert "COMPLETADO" in plan_md_completed
+    assert "- [x] **Paso 1:** Auditar repositorio ✅" in plan_md_completed
+    assert "- [x] **Paso 2:** Implementar patch engine ✅" in plan_md_completed
+    assert "- [x] **Paso 3:** Verificar tests ✅" in plan_md_completed
+    assert "- [x] Todos los tests pasan en verde ✅" in plan_md_completed
+
 
 def test_request_approval_callback():
     approved = False
