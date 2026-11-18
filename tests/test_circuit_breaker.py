@@ -430,3 +430,18 @@ def test_circuit_breaker_rule_0_blocks_immediate_identical_command_on_unchanged_
     assert "CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO" in msg
     assert "Periodo 1" in msg
 
+
+def test_circuit_breaker_completion_guard_blocks_actions_after_plan_complete():
+    """Verifica que el Completion Guard bloquee cualquier herramienta activa si el plan ya se completó formalmente."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="write_file",
+        args={"path": "README.md", "content": "# Readme"},
+        plan_completed=True
+    )
+    assert blocked is True
+    assert "COMPLETION GUARD" in msg
+
+

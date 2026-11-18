@@ -65,11 +65,20 @@ def list_directory(path: str = ".", max_depth: int = 2) -> str:
     return "\n".join(lines[:300])  # Máximo 300 líneas
 
 
-def search_codebase(query: str, path: str = ".", file_pattern: Optional[str] = None) -> str:
+def search_codebase(
+    query: Optional[str] = None,
+    path: str = ".",
+    file_pattern: Optional[str] = None,
+    pattern: Optional[str] = None,
+) -> str:
     """
-    Busca ocurrencias textuales de 'query' en el código fuente.
+    Busca ocurrencias textuales o patrones de 'query' o 'pattern' en el código fuente (ripgrep / grep).
     Utiliza ripgrep si está disponible; de lo contrario usa búsqueda nativa en Python.
     """
+    actual_query = query if query is not None else (pattern or "")
+    if not actual_query:
+        return "Error: Debes proporcionar un término de búsqueda en 'query' o 'pattern'."
+
     search_path = Path(path).resolve()
     if not search_path.exists():
         return f"Error: La ruta '{path}' no existe."
@@ -82,20 +91,20 @@ def search_codebase(query: str, path: str = ".", file_pattern: Optional[str] = N
             cmd.extend(["--glob", f"!{excluded}/*"])
         if file_pattern:
             cmd.extend(["--glob", file_pattern])
-        cmd.extend([query, str(search_path)])
+        cmd.extend([actual_query, str(search_path)])
 
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=15, encoding="utf-8", errors="replace")
             output = res.stdout.strip()
             if output:
-                return f"Resultados de búsqueda con ripgrep para '{query}':\n" + output[:3000]
-            return f"No se encontraron coincidencias para '{query}'."
+                return f"Resultados de búsqueda con ripgrep para '{actual_query}':\n" + output[:3000]
+            return f"No se encontraron coincidencias para '{actual_query}'."
         except Exception:
             pass  # Fallback a Python nativo
 
     # Búsqueda nativa recursiva en Python
     matches: List[str] = []
-    query_lower = query.lower()
+    query_lower = actual_query.lower()
 
     for root, dirs, files in os.walk(search_path):
         # Excluir carpetas no deseadas in-place

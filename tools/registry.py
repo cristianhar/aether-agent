@@ -127,17 +127,46 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_codebase",
-            "description": "Busca ocurrencias de texto o símbolos en todos los archivos del proyecto.",
+            "description": "Busca ocurrencias de texto, símbolos o patrones en todos los archivos del proyecto (estilo ripgrep / grep).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Texto o palabra clave a buscar."
+                        "description": "Texto, símbolo o palabra clave a buscar (también acepta 'pattern')."
                     },
                     "path": {
                         "type": "string",
                         "description": "Directorio base de búsqueda (por defecto '.')."
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": "Patrón de archivos a filtrar, ej: '*.py' o '*.ts'."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "grep_search",
+            "description": "Búsqueda grep en el código base. Busca texto o patrones en archivos con filtrado por extensión.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Texto o patrón a buscar."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Ruta o directorio a buscar."
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": "Filtro de archivos (ej: '*.py')."
                     }
                 },
                 "required": ["query"]
@@ -879,6 +908,8 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "move_file": move_file,
     "run_command": run_command,
     "search_codebase": search_codebase,
+    "grep_search": search_codebase,
+    "grep": search_codebase,
     "list_directory": list_directory,
     "get_file_outline": get_file_outline,
     "get_repo_map": generate_repo_map,

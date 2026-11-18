@@ -28,12 +28,12 @@ from tools.registry import TOOLS_SCHEMA, execute_tool
 def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
     """Clasifica cada herramienta según su categoría de riesgo y permisos."""
     if name in [
-        "read_file", "search_codebase", "list_directory", "get_file_outline",
+        "read_file", "search_codebase", "grep_search", "grep", "list_directory", "get_file_outline",
         "get_repo_map", "get_diagnostics", "get_process_status",
         "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
         "list_mcp_tools", "delegate_research", "get_plan", "search_memory", "list_memories"
     ]:
-        category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
+        category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "grep_search", "grep", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
 
     if name in ["remember_fact", "update_plan"]:
@@ -333,6 +333,7 @@ class AgentOrchestrator:
         consecutive_tool_failures: int = 0,
         executed_edits: Optional[set] = None,
         action_history: Optional[List[str]] = None,
+        plan_completed: bool = False,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle Universal:
@@ -346,10 +347,18 @@ class AgentOrchestrator:
         6. Repite exactamente la misma edición que no produjo cambios o no resolvió el fallo.
         """
         passive_tools = {
-            "read_file", "list_directory", "search_codebase", "get_file_outline",
+            "read_file", "list_directory", "search_codebase", "grep_search", "grep", "get_file_outline",
             "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
             "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
         }
+
+        # Completion Guard: Si el plan fue completado, no permitir nuevas herramientas activas de mutación
+        if plan_completed and tool_name not in passive_tools:
+            return True, (
+                "⛔ [COMPLETION GUARD]: Todos los pasos del plan ya han sido completados y verificados formalmente. "
+                "Está prohibido ejecutar más herramientas o crear archivos adicionales en este turno. "
+                "Concluye tu turno ahora resumiendo la solución para el usuario en tu respuesta final."
+            )
 
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
@@ -510,6 +519,7 @@ class AgentOrchestrator:
         recent_failed_tools: list = []
         executed_edits: set = set()
         action_history: List[str] = []
+        plan_completed_in_turn: bool = False
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -539,13 +549,14 @@ class AgentOrchestrator:
             payload = {
                 "model": self.model,
                 "messages": messages,
-                "tools": TOOLS_SCHEMA,
                 "stream": bool(self.on_token),
                 "options": {
                     "temperature": 0.2,
                     "num_ctx": 8192,
                 }
             }
+            if not plan_completed_in_turn:
+                payload["tools"] = TOOLS_SCHEMA
 
             content = ""
             tool_calls = []
@@ -616,8 +627,8 @@ class AgentOrchestrator:
 
             # Si el modelo no solicita ninguna herramienta, verificar si era un intento de JSON malformado
             if not tool_calls:
-                # Detección de tool call fantasma no parseable
-                if '"name":' in content and ('"arguments":' in content or '"path":' in content or '"command":' in content):
+                # Detección de tool call fantasma no parseable (solo si herramientas estaban habilitadas)
+                if not plan_completed_in_turn and '"name":' in content and ('"arguments":' in content or '"path":' in content or '"command":' in content):
                     if iteration < self.max_iterations:
                         self.memory.add_assistant_message(content=content)
                         retry_hint = (
@@ -744,6 +755,7 @@ class AgentOrchestrator:
                     consecutive_tool_failures=consecutive_tool_failures,
                     executed_edits=executed_edits,
                     action_history=action_history,
+                    plan_completed=plan_completed_in_turn,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
@@ -811,9 +823,13 @@ class AgentOrchestrator:
                             known_syntax_error_files.add(target_path)
                             known_syntax_error_files.add(Path(target_path).name)
                         last_failed_tool_key = tool_call_key
-                elif tool_name in ["read_file", "list_directory", "search_codebase"]:
+                elif tool_name in ["read_file", "list_directory", "search_codebase", "grep_search", "grep"]:
                     if is_success:
                         consecutive_edit_failures = 0
+
+                elif tool_name == "update_plan":
+                    if is_success and ("¡Todos los pasos del plan han sido completados" in tool_result or "🎉 COMPLETADO" in tool_result):
+                        plan_completed_in_turn = True
 
                 elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:
                     files_modified_since_cmd_fail = True

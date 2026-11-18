@@ -101,3 +101,22 @@ def test_hooks_post_tool_use_plan_completed_guidance():
     out = hooks.post_tool_use("update_plan", {}, "🎉 COMPLETADO (Todos los hitos finalizados)")
     assert "Plan completado y verificado en su totalidad" in out
 
+
+def test_hooks_blocks_autonomous_git_add_commit():
+    hooks = HookManager(mode="agent")
+    allowed, reason = hooks.pre_tool_use("run_command", {"command": "git add -A"})
+    assert allowed is False
+    assert "Comando de Git bloqueado" in reason
+
+    allowed, reason = hooks.pre_tool_use("run_command", {"command": "git commit -m 'test'"})
+    assert allowed is False
+    assert "Comando de Git bloqueado" in reason
+
+
+def test_hooks_blocks_gitignore_tampering():
+    hooks = HookManager(mode="agent")
+    allowed, reason = hooks.pre_tool_use("edit_file", {"path": ".gitignore", "target": ".aether\n", "replacement": ""})
+    assert allowed is False
+    assert ".gitignore bloqueada" in reason
+
+

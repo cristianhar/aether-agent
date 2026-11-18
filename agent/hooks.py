@@ -59,10 +59,34 @@ class HookManager:
 
         # Validación de seguridad en comandos de terminal
         if tool_name == "run_command":
-            cmd = args.get("command", "")
+            cmd = args.get("command", "").strip()
+            cmd_lower = cmd.lower()
+
+            # Política estricta: Control de Git bajo potestad del desarrollador
+            git_forbidden_prefixes = ("git add", "git commit", "git push", "git rm", "git merge", "git rebase")
+            if any(cmd_lower.startswith(p) for p in git_forbidden_prefixes):
+                return False, (
+                    "Comando de Git bloqueado: El control del repositorio pertenece exclusivamente al desarrollador. "
+                    "Está terminantemente prohibido ejecutar 'git add' o 'git commit' de forma autónoma. "
+                    "Tu trabajo de implementación ha concluido con éxito; concluye el turno ahora e informa al usuario "
+                    "para que pueda revisar los cambios con '/diff' y realizar commit con '/commit'."
+                )
+
             is_safe, reason = check_command_safety(cmd)
             if not is_safe:
                 return False, f"Comando de alto riesgo bloqueado por política de seguridad: {reason}"
+
+        # Protección del archivo .gitignore
+        if tool_name in ["edit_file", "write_file", "delete_file"]:
+            target_path = str(args.get("path", "")).replace("\\", "/")
+            if target_path.endswith(".gitignore"):
+                target_str = str(args.get("target", "") or "")
+                content_str = str(args.get("content", "") or "")
+                if ".aether" in target_str or ".aether" in content_str:
+                    return False, (
+                        "Modificación de .gitignore bloqueada: La carpeta '.aether' debe permanecer ignorada por Git. "
+                        "No intentes añadir .aether a Git. Concluye tu turno ahora e informa al usuario."
+                    )
 
         return True, "OK"
 
@@ -89,12 +113,18 @@ class HookManager:
             )
 
         # Si la salida de run_command indica fallo, inyectar alerta de auto-sanación
-        if tool_name == "run_command" and ("Código de salida: 1" in result or "Traceback" in result):
+        if tool_name == "run_command" and ("Código de salida: 1" in result or "Traceback" in result or "FAILED" in result):
             if "EOFError" in result:
                 result += (
                     "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO]: El comando falló con EOFError porque el script ejecutó input() en una terminal no interactiva.\n"
                     "• Para verificar scripts que esperan teclado, ejecuta: run_command(command='python -m py_compile <archivo>.py') o 'python -c \"import <modulo>\"'.\n"
                     "• NUNCA busques 'EOFError' dentro del archivo con edit_file; EOFError es un mensaje de la consola, no código fuente."
+                )
+            elif "TypeError" in result or "AssertionError" in result:
+                result += (
+                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO]: La prueba falló en la verificación de tipos o aserción.\n"
+                    "• Usa 'read_file' para inspeccionar la implementación real de la función que estás probando.\n"
+                    "• Ajusta los valores de prueba en el archivo de tests para que coincidan con la firma y lógica real del código."
                 )
 
         # Ejecutar hooks posteriores registrados dinámicamente
