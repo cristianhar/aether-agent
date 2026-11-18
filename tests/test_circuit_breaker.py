@@ -491,4 +491,20 @@ def test_circuit_breaker_cycle_hint_distinguishes_test_success_vs_failure():
     assert "CONCLUIDO CON ÉXITO" in msg_ok
 
 
+def test_circuit_breaker_blocks_generic_hallucinated_filenames():
+    """Verifica que el circuit breaker bloquee archivos genéricos alucinados (module.py, test_module.py) si no fueron pedidos."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="write_file",
+        args={"path": "test_module.py", "content": "import unittest"},
+        user_prompt="Implementa TokenBucket en token_bucket.py y crea test_token_bucket.py"
+    )
+    assert blocked is True
+    assert "ARCHIVO GENÉRICO BLOQUEADO" in msg
+    assert "test_module.py" in msg
+
+
+
 

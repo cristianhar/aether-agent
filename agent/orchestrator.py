@@ -359,6 +359,7 @@ class AgentOrchestrator:
         plan_completed: bool = False,
         last_test_exit_code: Optional[int] = None,
         last_test_failure_summary: Optional[str] = None,
+        user_prompt: str = "",
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle Universal:
@@ -384,6 +385,21 @@ class AgentOrchestrator:
                 "Está prohibido ejecutar más herramientas o crear archivos adicionales en este turno. "
                 "Concluye tu turno ahora resumiendo la solución para el usuario en tu respuesta final."
             )
+
+        # Regla Anti-Alucinación de Archivos Genéricos (module.py, test_module.py, etc.)
+        if tool_name in ["write_file", "edit_file"]:
+            target_p = str(args.get("path", "") or "")
+            target_name = Path(target_p).name.lower()
+            generic_hallucinations = {
+                "module.py", "test_module.py", "example.py", "test_example.py",
+                "sample.py", "test_sample.py", "foo.py", "test_foo.py", "bar.py"
+            }
+            if target_name in generic_hallucinations and target_name not in user_prompt.lower():
+                return True, (
+                    f"⛔ [CIRCUIT BREAKER - ARCHIVO GENÉRICO BLOQUEADO]: '{target_name}' es un archivo de plantilla genérica alucinado.\n"
+                    "• Está TERMINANTEMENTE PROHIBIDO crear módulos ficticios como 'module.py' o 'test_module.py'.\n"
+                    "• ACCIÓN OBLIGATORIA: Revisa la solicitud inicial del usuario e implementa ÚNICAMENTE los archivos especificados en la tarea."
+                )
 
         # Regla Anti-Bucle de Inspección Pasiva (Prevenir bucles repetitivos de read_file / get_file_outline)
         if tool_name in ["read_file", "get_file_outline"]:
@@ -641,7 +657,7 @@ class AgentOrchestrator:
                 "stream": bool(self.on_token),
                 "options": {
                     "temperature": 0.2,
-                    "num_ctx": 8192,
+                    "num_ctx": 5120,
                 }
             }
             if not plan_completed_in_turn:
@@ -788,6 +804,23 @@ class AgentOrchestrator:
                 is_premature_deflection = any(m in content_lower for m in premature_question_markers)
 
                 prompt_lower = user_prompt.lower()
+                requested_py_files = re.findall(r"['\"]([a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
+                missing_requested_files = [
+                    rf for rf in requested_py_files
+                    if not (Path.cwd() / rf).is_file()
+                ]
+
+                if missing_requested_files and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                    proactive_prompts_sent += 1
+                    missing_f = missing_requested_files[0]
+                    self.memory.add_assistant_message(content=content)
+                    missing_file_hint = (
+                        f"[SISTEMA AETHER - ENTREGABLE FALTANTE]: La solicitud del usuario requirió crear '{missing_f}', pero este archivo no existe en el disco.\n"
+                        f"• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a 'write_file(path=\"{missing_f}\", content=...)' para implementar este archivo."
+                    )
+                    self.memory.add_user_message(content=missing_file_hint)
+                    continue
+
                 tests_requested = any(w in prompt_lower for w in ["test", "tests", "prueba", "pruebas", "pytest"])
                 tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
                 missing_tests = tests_requested and not tests_exist
@@ -931,6 +964,7 @@ class AgentOrchestrator:
                     plan_completed=plan_completed_in_turn,
                     last_test_exit_code=last_test_exit_code,
                     last_test_failure_summary=last_test_failure_summary,
+                    user_prompt=user_prompt,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
