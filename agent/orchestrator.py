@@ -408,12 +408,22 @@ class AgentOrchestrator:
                                 "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
                             )
                         else:
-                            cycle_hint = (
-                                "• El archivo fuente ya fue creado o guardado. Si aún no has creado el archivo de pruebas ('test_*.py'), "
-                                "tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear el archivo de pruebas con las aserciones requeridas.\n"
-                                "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
-                                f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
-                            )
+                            target_file_obj = Path(target_path_str) if target_path_str else None
+                            if target_file_obj and target_file_obj.suffix == ".py":
+                                t_stem = target_file_obj.stem
+                                expected_test_file = f"test_{t_stem}.py" if not t_stem.startswith("test_") else f"{t_stem}.py"
+                                cycle_hint = (
+                                    f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
+                                    f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
+                                    f"• NUNCA inventes nombres de archivos no pedidos (como calculadoras o módulos ajenos). Implementa '{expected_test_file}'."
+                                )
+                            else:
+                                cycle_hint = (
+                                    "• El archivo ya fue creado o guardado. Si aún no has creado el archivo de pruebas ('test_*.py'), "
+                                    "tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear el archivo de pruebas.\n"
+                                    "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                    f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
+                                )
                         msg = (
                             f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
                             f"La acción '{current_signature}' se está repitiendo consecutivamente sin modificaciones en el disco: {cycle_str}.\n"

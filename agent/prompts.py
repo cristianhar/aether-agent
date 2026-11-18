@@ -75,7 +75,7 @@ FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - DEBES LLAMAR DIRECTAMENTE A `write_file` o `edit_file` para materializar el código físicamente en el disco.
 - Para modificar archivos existentes: si es un cambio puntual de pocas líneas en un archivo grande, usa `edit_file`. Si el archivo es pequeño (< 50 líneas) o vas a modificar múltiples métodos, utiliza `write_file` para reescribir el archivo completo de forma limpia y atómica, evitando errores de sangría.
 - UBICACIÓN Y NOMBRES EXACTOS DE ARCHIVOS:
-  * Utiliza SIEMPRE y ÚNICAMENTE el nombre exacto de archivo y módulo solicitado por el usuario en su solicitud (ej: si pide 'calculadora.py', crea 'calculadora.py'; si pide 'expr_eval.py', crea 'expr_eval.py'). NUNCA inventes nombres de archivo no pedidos ni uses nombres de ejemplos.
+  * Utiliza SIEMPRE y ÚNICAMENTE el nombre exacto de archivo y módulo solicitado por el usuario en su solicitud. Está TERMINANTEMENTE PROHIBIDO inventar nombres de archivo no solicitados (como calculadoras, juegos o módulos ajenos).
   * Crea los archivos directamente en el directorio actual (ej: './archivo.py' o 'archivo.py'). NUNCA crees carpetas intermedias arbitrarias como 'src/' a menos que el usuario lo solicite expresamente.
 - ORDEN ESTRICTO DE DESARROLLO (PRIMERO EL CÓDIGO FUENTE, LUEGO LOS TESTS):
   * Si la tarea pide implementar un componente y sus pruebas:
