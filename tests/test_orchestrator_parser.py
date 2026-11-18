@@ -55,3 +55,27 @@ def test_extract_malformed_json_tool_calls_rescued_by_regex():
     assert calls[0]["function"]["name"] == "write_file"
     assert calls[0]["function"]["arguments"]["path"] == "todo_manager.py"
     assert "class TodoManager" in calls[0]["function"]["arguments"]["content"]
+
+
+def test_thought_extraction_and_tool_call():
+    import re
+    raw = """<thought>
+El usuario quiere crear un módulo de cálculo. Voy a crearlo en calc.py.
+</thought>
+```json
+{
+  "name": "write_file",
+  "arguments": {
+    "path": "calc.py",
+    "content": "def add(a, b): return a + b"
+  }
+}
+```"""
+    m = re.search(r"<thought>([\s\S]*?)</thought>", raw, re.IGNORECASE)
+    assert m is not None
+    thought = m.group(1).strip()
+    assert "calc.py" in thought
+    stripped = re.sub(r"<thought>[\s\S]*?</thought>", "", raw, flags=re.IGNORECASE).strip()
+    calls = AgentOrchestrator._extract_tool_calls_from_content(stripped)
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "write_file"

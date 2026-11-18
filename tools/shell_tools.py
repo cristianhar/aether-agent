@@ -85,6 +85,18 @@ def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, st
         except Exception:
             pass
 
+    # Detección universal de discrepancias en aserciones de tests (Python AssertionError, Node assert, Rust assertion)
+    assert_m = re.search(r"(?:AssertionError|assert(?:ion)? failed|ERR_ASSERTION)[^\n\r:]*:?\s*([^\n\r!=]+?)\s*(?:!=|!==)\s*([^\n\r]+)", raw_output, re.IGNORECASE)
+    if assert_m:
+        val_actual = assert_m.group(1).strip()
+        val_expected = assert_m.group(2).strip()
+        if len(val_actual) < 80 and len(val_expected) < 80:
+            structural_hints.append(
+                f"💡 [DISCREPANCIA EN TEST DETECTADA]: La prueba falló porque el resultado obtenido fue '{val_actual}', pero se esperaba '{val_expected}'.\n"
+                f"• Si el código de producción tiene un error de cálculo o lógica, corrígelo con 'edit_file' para que produzca '{val_expected}'.\n"
+                f"• Si el cálculo de producción es el correcto y el test tenía una expectativa mal calculada, edita el archivo de pruebas con 'edit_file' para esperar '{val_actual}'."
+            )
+
     all_parts = [banner] + structural_hints
     return "\n\n".join(all_parts)
 

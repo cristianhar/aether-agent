@@ -86,3 +86,19 @@ def test_universal_diagnostic_rust():
     assert "14" in hints
     assert "mismatched types" in hints
 
+
+def test_universal_diagnostic_assertion_discrepancy():
+    from tools.shell_tools import _generate_shell_diagnostics
+    from pathlib import Path
+
+    stdout = """
+    self.assertEqual(employee.calcular_salario_neto(), 4250.0)
+E   AssertionError: 25200.0 != 4250.0
+    """
+    hints = _generate_shell_diagnostics("pytest test_payroll.py", Path.cwd(), 1, stdout, "")
+    assert hints is not None
+    assert "DISCREPANCIA EN TEST DETECTADA" in hints
+    assert "25200.0" in hints
+    assert "4250.0" in hints
+    assert "edit_file" in hints
+

@@ -475,8 +475,12 @@ class AgentOrchestrator:
             if consecutive_tool_failures >= 6:
                 final_answer = (
                     "⚠️ [CIRCUIT BREAKER GENERAL]: Se detuvo la ejecución autónoma tras 6 intentos fallidos consecutivos "
-                    "para evitar bucles improductivos y proteger los recursos de la máquina. "
-                    "Revisa los archivos generados y los diagnósticos emitidos para continuar."
+                    "para evitar bucles improductivos y proteger los recursos de la máquina.\n"
+                    "• Diagnóstico: El modelo no logró mutar los archivos en una dirección que resolviera el fallo.\n"
+                    "• Acciones recomendadas:\n"
+                    "  1. Revisa los archivos generados y los diagnósticos emitidos arriba.\n"
+                    "  2. Si deseas revertir los cambios de este turno al estado previo intacto, ejecuta el comando '/undo'.\n"
+                    "  3. Para replantear la tarea con instrucciones más específicas, escribe tu solicitud en el chat."
                 )
                 self.memory.add_assistant_message(content=final_answer)
                 self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
@@ -544,6 +548,14 @@ class AgentOrchestrator:
                 self.set_state(AgentState.CANCELLED)
                 return cancellation_token.reason or "Operación cancelada por el usuario."
 
+            # Extracción del bloque de pensamiento analítico <thought>...</thought>
+            thought_text = ""
+            if content:
+                thought_match = re.search(r"<thought>([\s\S]*?)</thought>", content, re.IGNORECASE)
+                if thought_match:
+                    thought_text = thought_match.group(1).strip()
+                    content = re.sub(r"<thought>[\s\S]*?</thought>", "", content, flags=re.IGNORECASE).strip()
+
             # Fallback inteligente
             if not tool_calls and content:
                 extracted = self._extract_tool_calls_from_content(content)
@@ -551,12 +563,15 @@ class AgentOrchestrator:
                     tool_calls = extracted
 
             # Notificar pensamiento limpio si no hubo streaming de tokens
-            if content and self.on_thought and not self.on_token:
-                clean_thought = re.sub(r"```(?:json)?\s*\{[\s\S]*?\}\s*```", "", content).strip()
-                if clean_thought.startswith("{") and clean_thought.endswith("}"):
-                    clean_thought = ""
-                if clean_thought:
-                    self.on_thought(clean_thought)
+            if self.on_thought:
+                if thought_text:
+                    self.on_thought(thought_text)
+                elif content and not self.on_token:
+                    clean_thought = re.sub(r"```(?:json)?\s*\{[\s\S]*?\}\s*```", "", content).strip()
+                    if clean_thought.startswith("{") and clean_thought.endswith("}"):
+                        clean_thought = ""
+                    if clean_thought:
+                        self.on_thought(clean_thought)
 
             # Si el modelo no solicita ninguna herramienta, verificar si era un intento de JSON malformado
             if not tool_calls:

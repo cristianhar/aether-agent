@@ -320,10 +320,19 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
             console.print("[bold cyan]Historial y contexto reiniciados.[/bold cyan]")
             continue
 
+        elif user_input == "/compact":
+            tokens_before = orchestrator.memory.estimate_tokens()
+            orchestrator.memory.compact_memory()
+            tokens_after = orchestrator.memory.estimate_tokens()
+            saved = max(0, tokens_before - tokens_after)
+            console.print(f"[bold green]✅ Contexto compactado exitosamente:[/] {tokens_before} ➔ {tokens_after} tokens (~{saved} tokens liberados en VRAM).")
+            continue
+
         elif user_input == "/help":
             help_text = """
 ### 🛠️ Comandos Especiales Slash (`/`):
 - **/cd <ruta>**: Cambia el directorio de trabajo dinámicamente a cualquier proyecto de tu PC.
+- **/compact**: Compacta el historial de conversación en un resumen ejecutivo liberando tokens de VRAM.
 - **/map**: Muestra el mapa arquitectónico completo del repositorio (archivos, clases, funciones).
 - **/test [archivo]**: Ejecuta pruebas con pytest y ofrece auto-sanación instantánea si algo falla.
 - **/commit [mensaje]**: Hace `git add -A` y commit de todos los cambios de forma limpia.

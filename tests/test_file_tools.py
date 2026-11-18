@@ -130,3 +130,14 @@ def test_edit_file_preserves_indentation_on_unindented_target(tmp_path):
     assert "        return 100\n" in new_content
 
 
+def test_edit_file_noop_guidance(tmp_path):
+    """Verifica que un intento de edición idéntica (no-op) incluya directivas accionables."""
+    f = tmp_path / "calc.py"
+    f.write_text("def calc(): return 42\n", encoding="utf-8")
+
+    res = edit_file(str(f), target="return 42", replacement="return 42")
+    assert "Sin cambios (Idéntico)" in res
+    assert "INSTRUCCIÓN DE AUTO-CORRECCIÓN" in res
+    assert "AssertionError" in res
+
+

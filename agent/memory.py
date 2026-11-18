@@ -70,8 +70,18 @@ class ConversationMemory:
                 content = str(m.get("content", ""))
                 first_line = content.splitlines()[0] if content else ""
                 actions.append(first_line[:80])
+            elif m.get("role") == "assistant" and m.get("tool_calls"):
+                for tc in m.get("tool_calls", []):
+                    fn = tc.get("function", {})
+                    name = fn.get("name", "tool")
+                    args = fn.get("arguments", {})
+                    target_arg = args.get("path") or args.get("command") or "" if isinstance(args, dict) else ""
+                    actions.append(f"{name}({target_arg})")
 
-        compaction_text = "[COMPACTACIÓN DE CONTEXTO]: Acciones previas clave:\n- " + "\n- ".join(actions[-6:] if actions else ["Exploración previa"])
+        compaction_text = (
+            "📋 [COMPACTACIÓN DE CONTEXTO ANTIGRAVITY]: Se compactó el historial previo para optimizar tokens en VRAM.\n"
+            "Acciones y verificaciones clave consolidadas:\n• " + "\n• ".join(actions[-8:] if actions else ["Exploración previa"])
+        )
         compaction_summary = {
             "role": "system",
             "content": compaction_text

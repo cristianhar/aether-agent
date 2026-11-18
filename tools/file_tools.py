@@ -261,8 +261,12 @@ def edit_file(path: str, target: str, replacement: str) -> str:
     if target_normalized == replacement_normalized:
         return (
             f"Error / Sin cambios (Idéntico): El bloque 'replacement' es IDÉNTICO al bloque 'target'. "
-            f"No se realizó ninguna modificación en el archivo '{path}'. "
-            "Debes proporcionar un código nuevo que realmente corrija el error existente."
+            f"No se realizó ninguna modificación en el archivo '{path}'.\n"
+            "💡 [INSTRUCCIÓN DE AUTO-CORRECCIÓN]: Enviaste exactamente el mismo código en target y replacement. "
+            "Si una prueba previa falló por una aserción ('AssertionError: actual != esperado'):\n"
+            f"• Opción A: Modifica la fórmula o lógica en '{path}' para que genere el valor que espera el test.\n"
+            "• Opción B: Si la fórmula actual es la correcta y el test tenía un valor esperado erróneo, utiliza 'edit_file' sobre el archivo de pruebas para actualizar el valor esperado.\n"
+            "NO vuelvas a enviar 'target == replacement'."
         )
 
     new_content = content_normalized.replace(target_normalized, replacement_normalized, 1)

@@ -45,6 +45,15 @@ Dispones de herramientas nativas para interactuar con el entorno:
 <agent_workflow>
 Opera siempre siguiendo el ciclo de 4 fases de Antigravity:
 
+PROTOCOLO DE PENSAMIENTO ESTRATÉGICO (<thought>):
+Antes de emitir cualquier herramienta, razona brevemente en 2 o 3 líneas dentro de un bloque <thought>...</thought>:
+<thought>
+• Diagnóstico del estado actual o error.
+• Archivo exacto que vas a inspeccionar o modificar.
+• Razón de la acción.
+</thought>
+Luego emite la herramienta correspondiente.
+
 FASE 1: EXPLORACIÓN E INSPECCIÓN (No asumas nada)
 - Antes de crear o editar código en un proyecto existente, investiga la estructura con `get_repo_map` o `get_file_outline`.
 - Si necesitas encontrar dónde se define una función o clase, usa `search_codebase`.
