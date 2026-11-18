@@ -125,12 +125,12 @@ Cuando un proyecto tiene decenas de módulos o cuando Cristian inicia una nueva 
 
 ## 7. Plan de Ejecución por Etapas y Verificación
 
-| Etapa | Tarea Técnica | Archivos Afectados | Criterio de Aprobación |
-| :---: | :--- | :--- | :--- |
-| **Etapa 1** | Despacho concurrente de herramientas pasivas con `asyncio` | `agent/orchestrator.py`, `tools/registry.py` | Pruebas de lectura múltiple simultánea pasando con latencia reducida. |
-| **Etapa 2** | Subagentes especializados `researcher` y `tester` | `tools/subagent.py`, `agent/prompts.py`, `agent/orchestrator.py` | Test donde `researcher` audita código sin permisos de escritura. |
-| **Etapa 3** | Modo Planificación y Artefactos `.aether/plans/` | `agent/orchestrator.py`, `main.py`, `agent/prompts.py` | Comando `/plan` genera artefacto estructurado antes de editar. |
-| **Etapa 4** | Memoria Semántica Vectorial con `nomic-embed-text` | `agent/memory.py`, `tools/code_intel.py`, `.aether/sessions.db` | Búsqueda conceptual de símbolos devolviendo archivos precisos. |
+| Etapa | Tarea Técnica | Archivos Afectados | Criterio de Aprobación | Estado |
+| :---: | :--- | :--- | :--- | :---: |
+| **Etapa 1** | Despacho concurrente de herramientas pasivas con `ThreadPoolExecutor` | `agent/orchestrator.py`, `tools/registry.py` | Pruebas de lectura múltiple simultánea pasando con latencia reducida. | ✅ **COMPLETADO** (`1a668f5`) |
+| **Etapa 2** | Subagentes especializados `researcher` y `tester` | `tools/subagent.py`, `agent/prompts.py`, `agent/orchestrator.py` | Test donde `researcher` audita código sin permisos de escritura. | ✅ **COMPLETADO** (`c501e54`) |
+| **Etapa 3** | Modo Planificación y Artefactos `.aether/plans/` (`/plan`) | `agent/orchestrator.py`, `main.py`, `agent/hooks.py`, `tools/agent_tools.py` | Comando `/plan` genera artefacto interactivo con casillas antes de editar. | ✅ **COMPLETADO** (`eff45d5`) |
+| **Etapa 4** | Memoria Semántica Vectorial con `nomic-embed-text` / SQLite | `agent/session.py`, `agent/embeddings.py`, `tools/agent_tools.py`, `main.py` | Búsqueda conceptual de símbolos y directivas persistentes entre sesiones. | ✅ **COMPLETADO** (`eb8a892`) |
 
 ---
 
