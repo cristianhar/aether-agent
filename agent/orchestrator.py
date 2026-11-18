@@ -325,20 +325,33 @@ class AgentOrchestrator:
         # Regla 0: Detector Matemático Universal de Ciclos Periódicos (Periodos p=1, 2, 3)
         # Solo aplica a herramientas activas de mutación o ejecución (no a inspección pasiva)
         if tool_name not in passive_tools and action_history and len(action_history) >= 2:
-            current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
-            candidate_history = list(action_history) + [current_signature]
-            cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
-            if cycle and not files_modified_since_cmd_fail:
-                period, pattern = cycle
-                cycle_str = " ➔ ".join(pattern)
-                msg = (
-                    f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
-                    f"Has caído en una secuencia cíclica repetitiva de acciones: {cycle_str}.\n"
-                    "Esta secuencia ya se ejecutó previamente y no produjo ninguna modificación efectiva en el estado del disco.\n"
-                    "• ACCIÓN OBLIGATORIA: Rompe el ciclo inmediatamente. Si una prueba falla o una edición no surte efecto, "
-                    "revisa la causa raíz del error o reescribe el archivo afectado completamente usando 'write_file'."
+            target_path_str = str(args.get("path", "") or "")
+            target_file_name = Path(target_path_str).name if target_path_str else ""
+            is_fixing_syntax = (
+                tool_name in ["edit_file", "write_file"]
+                and bool(known_syntax_error_files)
+                and any(
+                    err_f in target_path_str
+                    or (target_file_name and target_file_name in err_f)
+                    or (target_file_name and Path(err_f).name == target_file_name)
+                    for err_f in known_syntax_error_files
                 )
-                return True, msg
+            )
+            if not is_fixing_syntax:
+                current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                candidate_history = list(action_history) + [current_signature]
+                cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
+                if cycle and not files_modified_since_cmd_fail:
+                    period, pattern = cycle
+                    cycle_str = " ➔ ".join(pattern)
+                    msg = (
+                        f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
+                        f"Has caído en una secuencia cíclica repetitiva de acciones: {cycle_str}.\n"
+                        "Esta secuencia ya se ejecutó previamente y no produjo ninguna modificación efectiva en el estado del disco.\n"
+                        "• ACCIÓN OBLIGATORIA: Rompe el ciclo inmediatamente. Si una prueba falla o una edición no surte efecto, "
+                        "revisa la causa raíz del error o reescribe el archivo afectado completamente usando 'write_file'."
+                    )
+                    return True, msg
 
         # Combinar failed_commands con last_failed_command para retrocompatibilidad
         active_failed_cmds = set(failed_commands or set())
@@ -650,13 +663,6 @@ class AgentOrchestrator:
                     executed_edits=executed_edits,
                     action_history=action_history,
                 )
-                if tool_name not in [
-                    "read_file", "list_directory", "search_codebase", "get_file_outline",
-                    "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
-                    "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
-                ]:
-                    current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
-                    action_history.append(current_action_sig)
                 if breaker_tripped:
                     total_tool_failures += 1
                     consecutive_tool_failures += 1
@@ -664,6 +670,14 @@ class AgentOrchestrator:
                     last_failed_tool_key = tool_call_key
                     self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
                     continue
+
+                if tool_name not in [
+                    "read_file", "list_directory", "search_codebase", "get_file_outline",
+                    "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
+                    "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
+                ]:
+                    current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                    action_history.append(current_action_sig)
 
                 # 5. Ejecución de la herramienta con cronometraje
                 tool_start = time.perf_counter()
