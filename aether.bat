@@ -63,8 +63,8 @@ if %ERRORLEVEL% NEQ 0 (
     ping 127.0.0.1 -n 4 >nul
 )
 echo [AETHER] Iniciando consola autonoma interactiva...
-.venv\Scripts\python.exe main.py
-pause
+.venv\Scripts\python.exe main.py %*
+if "%AETHER_NO_PAUSE%"=="" pause
 goto END
 
 :RUN_WEB
