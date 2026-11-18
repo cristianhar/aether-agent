@@ -4,6 +4,7 @@ Integra máquina de estados, token de cancelación, motor de permisos, persisten
 """
 
 from datetime import datetime
+import ast
 import json
 import os
 from pathlib import Path
@@ -202,6 +203,25 @@ class AgentOrchestrator:
                     return [{"function": {"name": "update_plan", "arguments": data}}]
             elif isinstance(data, list):
                 for item in data:
+                    if isinstance(item, dict) and "name" in item and "arguments" in item:
+                        extracted.append({"function": item})
+                if extracted:
+                    return extracted
+        except Exception:
+            pass
+
+        # 2.2 Fallback con ast.literal_eval para diccionarios con comillas simples de modelos locales
+        try:
+            val = ast.literal_eval(content.strip())
+            if isinstance(val, dict):
+                if "name" in val and "arguments" in val:
+                    return [{"function": val}]
+                elif "function" in val:
+                    return [val]
+                elif "plan_steps" in val:
+                    return [{"function": {"name": "update_plan", "arguments": val}}]
+            elif isinstance(val, list):
+                for item in val:
                     if isinstance(item, dict) and "name" in item and "arguments" in item:
                         extracted.append({"function": item})
                 if extracted:

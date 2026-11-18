@@ -79,3 +79,19 @@ El usuario quiere crear un módulo de cálculo. Voy a crearlo en calc.py.
     calls = AgentOrchestrator._extract_tool_calls_from_content(stripped)
     assert len(calls) == 1
     assert calls[0]["function"]["name"] == "write_file"
+
+
+def test_extract_python_dict_single_quotes_rescued_by_literal_eval():
+    content = """{
+        'name': 'edit_file',
+        'arguments': {
+            'path': 'bank_account.py',
+            'target': 'def deposit():',
+            'replacement': 'def deposit(amount):'
+        }
+    }"""
+    calls = AgentOrchestrator._extract_tool_calls_from_content(content)
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "edit_file"
+    assert calls[0]["function"]["arguments"]["path"] == "bank_account.py"
+
