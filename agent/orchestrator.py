@@ -36,7 +36,7 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
         return category, PermissionLevel.READ_ONLY
 
     if name in ["remember_fact", "update_plan"]:
-        return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.AGENT_AUTONOMOUS
+        return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.WORKSPACE_WRITE
 
     if name in ["write_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
         return ToolCategory.FILESYSTEM, PermissionLevel.WORKSPACE_WRITE
@@ -178,6 +178,8 @@ class AgentOrchestrator:
                         extracted.append({"function": data})
                     elif "function" in data:
                         extracted.append(data)
+                    elif "plan_steps" in data:
+                        extracted.append({"function": {"name": "update_plan", "arguments": data}})
                 elif isinstance(data, list):
                     for item in data:
                         if isinstance(item, dict) and "name" in item and "arguments" in item:
@@ -196,6 +198,8 @@ class AgentOrchestrator:
                     return [{"function": data}]
                 elif "function" in data:
                     return [data]
+                elif "plan_steps" in data:
+                    return [{"function": {"name": "update_plan", "arguments": data}}]
             elif isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict) and "name" in item and "arguments" in item:
@@ -222,6 +226,10 @@ class AgentOrchestrator:
                         continue
                     elif "function" in obj and isinstance(obj["function"], dict):
                         extracted.append(obj)
+                        pos = idx + end_pos
+                        continue
+                    elif "plan_steps" in obj:
+                        extracted.append({"function": {"name": "update_plan", "arguments": obj}})
                         pos = idx + end_pos
                         continue
                 pos = idx + 1

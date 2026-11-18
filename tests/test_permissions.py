@@ -80,3 +80,14 @@ def test_permission_engine_approval_callback():
     approved = True
     dec, _ = engine.evaluate(req)
     assert dec == PermissionDecision.ALLOW
+
+
+def test_all_registered_tools_have_valid_metadata():
+    from agent.orchestrator import get_tool_metadata
+    from tools.registry import TOOL_HANDLERS
+
+    for tool_name in TOOL_HANDLERS:
+        cat, level = get_tool_metadata(tool_name)
+        assert isinstance(cat, ToolCategory), f"{tool_name} category {cat} is not a ToolCategory"
+        assert isinstance(level, PermissionLevel), f"{tool_name} level {level} is not a PermissionLevel"
+
