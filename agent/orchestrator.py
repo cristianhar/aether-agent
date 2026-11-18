@@ -485,11 +485,21 @@ class AgentOrchestrator:
                                     )
                                 else:
                                     expected_test_file = f"test_{t_stem}.py"
-                                    cycle_hint = (
-                                        f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
-                                        f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
-                                        f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
-                                    )
+                                    test_exists = (Path.cwd() / expected_test_file).is_file()
+                                    if test_exists:
+                                        failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+                                        cycle_hint = (
+                                            f"• El archivo '{target_file_obj.name}' y sus pruebas '{expected_test_file}' ya existen en disco, "
+                                            "pero tus acciones consecutivas no están produciendo modificaciones efectivas.\n"
+                                            f"{failure_detail}"
+                                            f"• ACCIÓN OBLIGATORIA: Debes cambiar la lógica del código en '{target_file_obj.name}' o '{expected_test_file}' usando 'write_file' para corregir el fallo, o ejecutar 'run_tests()'."
+                                        )
+                                    else:
+                                        cycle_hint = (
+                                            f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
+                                            f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
+                                            f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
+                                        )
                             else:
                                 cycle_hint = (
                                     "• El archivo ya fue creado o guardado. Si aún no has creado el archivo de pruebas ('test_*.py'), "

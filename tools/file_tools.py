@@ -272,8 +272,9 @@ def write_file(path: str, content: str) -> str:
             if existing_hash == new_hash:
                 return (
                     f"Aviso / Sin cambios: El archivo '{path}' ya existe y contiene exactamente este mismo código (SHA256 idéntico).\n"
-                    "• No vuelvas a llamar a 'write_file' con el mismo contenido.\n"
-                    "• Procede al siguiente paso de tu tarea (ej: crear el archivo de pruebas con 'write_file' o ejecutar las pruebas con 'run_tests')."
+                    "• El código que enviaste no introdujo ninguna modificación efectiva en el disco.\n"
+                    "• Si estás intentando resolver un fallo de pruebas o de sintaxis, DEBES cambiar la lógica del código fuente para corregir el error.\n"
+                    "• NUNCA envíes el mismo código idéntico repetidamente."
                 )
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
