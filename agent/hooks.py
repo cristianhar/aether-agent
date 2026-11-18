@@ -132,10 +132,15 @@ class HookManager:
                     "• Reescribe el archivo usando 'write_file' con las importaciones necesarias y vuelve a probar."
                 )
             elif "ModuleNotFoundError" in result or "ImportError" in result:
+                import re
+                mod_match = re.search(r"No module named '([^']+)'", result)
+                missing_mod = mod_match.group(1) if mod_match else None
+                missing_info = f" '{missing_mod}.py'" if missing_mod else " el archivo fuente del módulo"
                 result += (
-                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - ERROR DE IMPORTACIÓN]:\n"
-                    "• Verifica que los nombres de los módulos y funciones coincidan con los archivos existentes.\n"
-                    "• Si creaste un archivo nuevo, asegúrate de que esté en la raíz actual y se importe correctamente."
+                    f"\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - MÓDULO NO ENCONTRADO]:\n"
+                    f"• Las pruebas no pudieron importar el módulo porque{missing_info} no existe en disco o no fue creado.\n"
+                    f"• ACCIÓN OBLIGATORIA: Debes crear{missing_info} inmediatamente usando 'write_file' con la implementación completa solicitada.\n"
+                    "• NUNCA elimines las pruebas ni las reemplaces con aserciones triviales como 'assertEqual(1+1, 2)'. Crea el código fuente faltante."
                 )
             elif "TypeError" in result or "AssertionError" in result:
                 result += (

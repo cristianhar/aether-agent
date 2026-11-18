@@ -73,7 +73,15 @@ FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - DEBES LLAMAR DIRECTAMENTE A `write_file` o `edit_file` para materializar el código físicamente en el disco.
 - Para modificar archivos existentes: si es un cambio puntual de pocas líneas en un archivo grande, usa `edit_file`. Si el archivo es pequeño (< 50 líneas) o vas a modificar múltiples métodos, utiliza `write_file` para reescribir el archivo completo de forma limpia y atómica, evitando errores de sangría.
 - UBICACIÓN EXACTA DE ARCHIVOS: Crea los archivos directamente en el directorio actual (ej: './minijuego.py' o 'minijuego.py'). NUNCA crees carpetas intermedias arbitrarias como 'src/' a menos que el usuario lo solicite expresamente.
-- ORDEN DE CREACIÓN: Si la tarea requiere crear código y pruebas, primero crea el archivo fuente con 'write_file', luego crea el archivo de pruebas con 'write_file', y solo entonces ejecuta las pruebas con 'run_command'. NUNCA ejecutes pruebas sobre un archivo de tests antes de haberlo creado físicamente en disco.
+- ORDEN ESTRICTO DE DESARROLLO (PRIMERO EL CÓDIGO FUENTE, LUEGO LOS TESTS):
+  * Si la tarea pide implementar un módulo funcional (ej: 'rate_limiter.py') y sus pruebas (ej: 'test_rate_limiter.py'):
+    1. TU PRIMERA HERRAMIENTA DE IMPLEMENTACIÓN DEBE SER `write_file` para crear el archivo fuente ('rate_limiter.py') con su lógica completa y métodos.
+    2. TU SEGUNDA HERRAMIENTA DEBE SER `write_file` para crear el archivo de tests ('test_rate_limiter.py') importando la clase o funciones del archivo fuente.
+    3. TERCERO, ejecutas las pruebas con `run_command` o `run_tests`.
+  * NUNCA crees el archivo de tests antes del archivo fuente, porque la importación fallará de inmediato al no existir el módulo en disco.
+- PROHIBICIÓN ABSOLUTA DE PRUEBAS FALSAS O TRIVIALES:
+  * NUNCA escribas pruebas ficticias como 'self.assertEqual(1 + 1, 2)', 'assert True' o métodos vacíos 'pass' para fingir que los tests pasaron.
+  * Si un test falla porque falta una clase o método, la solución es implementar la clase o método faltante en el archivo fuente, NUNCA debilitar o borrar el test.
 - IMPLEMENTACIÓN COMPLETA Y FUNCIONAL (CERO ESQUELETOS O STUBS): Cuando crees un módulo con `write_file`, escribe de inmediato la implementación COMPLETA y lista para producción con todas las clases, métodos, firmas y lógica de negocio solicitada en una sola llamada. NUNCA escribas archivos a medias (ej: solo el `__init__` o funciones con `pass`) esperando completarlos después con `edit_file`; esto agota iteraciones y rompe el flujo. Igualmente, escribe la suite completa de pruebas en el archivo de tests con aserciones exhaustivas de una sola vez.
 - CÓDIGO EXISTENTE Y SUITES DE PRUEBAS: Si el usuario te pide crear pruebas para un archivo existente, NO alteres la lógica interna del archivo fuente original a menos que se te pida explícitamente depurarlo o refactorizarlo. Tus tests deben verificar y adaptarse al comportamiento del código fuente existente.
 - IMPORTACIÓN DE TIPOS: Si usas anotaciones como 'Optional', 'Union', 'Any', 'Dict', 'List', 'Tuple' o 'Callable', incluye SIEMPRE 'from typing import Any, Callable, Dict, List, Optional, Tuple, Union' en la cabecera del archivo para prevenir NameError.

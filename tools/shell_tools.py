@@ -108,7 +108,11 @@ def run_command(command: str, cwd: Optional[str] = None, timeout: int = 45) -> s
     """
     work_dir = Path(cwd).resolve() if cwd else Path.cwd()
     if not work_dir.exists():
-        return f"Error: El directorio de trabajo especificado '{cwd}' no existe."
+        return (
+            f"Error: El directorio de trabajo especificado '{cwd}' no existe.\n"
+            f"• El directorio de trabajo actual del proyecto es '{Path.cwd()}'.\n"
+            "• Para ejecutar comandos en el proyecto actual, omite el argumento 'cwd' (o pasa cwd='.')."
+        )
 
     try:
         normalized_command = command.strip()

@@ -841,7 +841,8 @@ def apply_patch_tool(path: str, target: str, replacement: str, expected_sha256: 
 
 
 def run_tests_tool(test_target: str = None) -> str:
-    cmd = "pytest -v" if not test_target else f"pytest -v {test_target}"
+    target = test_target.strip() if test_target else "."
+    cmd = f"pytest -v -o testpaths=. {target}"
     return run_command(cmd)
 
 

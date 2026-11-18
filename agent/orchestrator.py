@@ -519,6 +519,7 @@ class AgentOrchestrator:
         recent_failed_tools: list = []
         executed_edits: set = set()
         action_history: List[str] = []
+        plan_active_in_turn: bool = False
         plan_completed_in_turn: bool = False
 
         for iteration in range(1, self.max_iterations + 1):
@@ -638,6 +639,18 @@ class AgentOrchestrator:
                         )
                         self.memory.add_user_message(content=retry_hint)
                         continue
+
+                # Guardián de Cierre de Plan: Si se inició o actualizó un plan en este turno y aún no ha concluido
+                if plan_active_in_turn and not plan_completed_in_turn and iteration < self.max_iterations - 1:
+                    self.memory.add_assistant_message(content=content)
+                    plan_guard_hint = (
+                        "[SISTEMA AETHER - CIERRE DE PLAN REQUERIDO]: Has emitido una respuesta final pero el plan activo en '.aether/plans/plan_activo.md' "
+                        "aún no ha sido marcado como COMPLETADO con 'update_plan(..., is_completed=True)'.\n"
+                        "• Si todas las pruebas pasaron y los archivos pedidos fueron creados, tu OBLIGACIÓN es llamar a 'update_plan(plan_steps=..., is_completed=True)' para cerrar el plan.\n"
+                        "• Si aún falta implementar algún archivo o ejecutar tests, ejecuta la herramienta correspondiente ahora."
+                    )
+                    self.memory.add_user_message(content=plan_guard_hint)
+                    continue
 
                 self.memory.add_assistant_message(content=content)
                 self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content)
@@ -828,6 +841,7 @@ class AgentOrchestrator:
                         consecutive_edit_failures = 0
 
                 elif tool_name == "update_plan":
+                    plan_active_in_turn = True
                     if is_success and ("¡Todos los pasos del plan han sido completados" in tool_result or "🎉 COMPLETADO" in tool_result):
                         plan_completed_in_turn = True
 

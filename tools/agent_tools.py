@@ -7,6 +7,7 @@ Herramientas de gestión del agente para AETHER IDE:
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -37,6 +38,26 @@ def update_plan(
     """
     global _CURRENT_PLAN
     completed = is_completed or (len(plan_steps) > 0 and current_step > len(plan_steps))
+
+    # Verificación de integridad de archivos requeridos antes de permitir completar el plan
+    if completed:
+        missing_files = []
+        for step in plan_steps:
+            for match in re.finditer(r'([a-zA-Z0-9_\-]+\.(?:py|js|ts|html|css|json))\b', step):
+                f_name = match.group(1)
+                if f_name in ["plan_activo.md", "current_plan.json"]:
+                    continue
+                file_target = Path.cwd() / f_name
+                if not file_target.exists() and not list(Path.cwd().glob(f"**/{f_name}")):
+                    missing_files.append(f_name)
+        if missing_files:
+            return (
+                f"❌ Error de Validación de Plan: No se puede marcar el plan como COMPLETADO porque el archivo "
+                f"'{missing_files[0]}' mencionado en las tareas no existe físicamente en el disco.\n"
+                f"• ACCIÓN OBLIGATORIA: Debes crear e implementar '{missing_files[0]}' usando 'write_file(path=\"{missing_files[0]}\", content=...)' "
+                "con la lógica completa requerida antes de completar el plan."
+            )
+
     _CURRENT_PLAN = {
         "steps": plan_steps,
         "current_step": len(plan_steps) if completed else current_step,
@@ -140,6 +161,20 @@ def get_plan() -> str:
             pass
 
     return "ℹ️ No hay ningún plan de ejecución activo en este momento. Usa 'update_plan' o el comando '/plan' para crear uno."
+
+
+def get_current_plan_state() -> Optional[Dict[str, Any]]:
+    """Retorna el estado estructurado del plan activo o None."""
+    global _CURRENT_PLAN
+    if _CURRENT_PLAN:
+        return _CURRENT_PLAN
+    plan_json_file = Path.cwd() / ".aether" / "current_plan.json"
+    if plan_json_file.is_file():
+        try:
+            return json.loads(plan_json_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return None
 
 
 def request_approval(action_description: str, risk_level: str = "high") -> str:
