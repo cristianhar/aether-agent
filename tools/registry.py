@@ -582,7 +582,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                         "description": "Indica si todos los pasos y criterios han sido completados y verificados con éxito."
                     }
                 },
-                "required": ["plan_steps"]
+                "required": []
             }
         }
     },

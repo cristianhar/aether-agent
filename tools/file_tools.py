@@ -247,8 +247,11 @@ def write_file(path: str, content: str = "") -> str:
     e incorpora validación sintáctica automática (Auto-Linter).
     """
     p_clean = path.strip().strip("'\"")
-    if p_clean.startswith("<") and p_clean.endswith(">"):
-        return f"Error: '{p_clean}' es un marcador de posición, no una ruta de archivo real. ACCIÓN OBLIGATORIA: Proporciona la ruta del archivo real que deseas escribir."
+    if "<" in p_clean or ">" in p_clean:
+        return (
+            f"Error: La ruta '{path}' contiene caracteres de marcador de posición ('<' o '>'), los cuales son inválidos en el sistema de archivos.\n"
+            f"• ACCIÓN OBLIGATORIA: Proporciona un nombre de archivo real y concreto (por ejemplo, 'test_modulo.py') sin usar signos menor/mayor."
+        )
 
     c_clean = content.strip().strip("'\"")
     if (c_clean.startswith("<") and c_clean.endswith(">") and len(c_clean) < 40) or c_clean in ["...", "TODO", "pass"]:
@@ -315,8 +318,11 @@ def edit_file(
         )
 
     p_clean = path.strip().strip("'\"")
-    if p_clean.startswith("<") and p_clean.endswith(">"):
-        return f"Error: '{p_clean}' es un marcador de posición, no una ruta de archivo real."
+    if "<" in p_clean or ">" in p_clean:
+        return (
+            f"Error: La ruta '{path}' contiene caracteres de marcador de posición ('<' o '>'), los cuales son inválidos en el sistema de archivos.\n"
+            f"• ACCIÓN OBLIGATORIA: Proporciona un nombre de archivo real y concreto (por ejemplo, 'test_modulo.py') sin usar signos menor/mayor."
+        )
 
     file_path = get_absolute_path(path)
     if not file_path.exists():

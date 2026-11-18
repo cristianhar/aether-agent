@@ -504,7 +504,7 @@ class AgentOrchestrator:
                                         )
                             else:
                                 prompt_test_files = re.findall(r"['\"](test_[a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
-                                test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else "el archivo de pruebas correspondiente ('test_<modulo>.py')"
+                                test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else f"'test_{target_file_obj.stem}.py'"
                                 cycle_hint = (
                                     f"• El archivo ya fue creado o guardado. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
                                     "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
@@ -642,6 +642,7 @@ class AgentOrchestrator:
         # Variables de control del Circuit Breaker Anti-Bucle
         failed_commands: set = set()
         files_modified_since_cmd_fail: bool = False
+        files_modified_in_turn: bool = False
         last_failed_tool_key: Optional[str] = None
         known_syntax_error_files: set = set()
         last_assertion_error: Optional[str] = None
@@ -847,50 +848,63 @@ class AgentOrchestrator:
                     if not (Path.cwd() / rf).is_file()
                 ]
 
-                if missing_requested_files and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
-                    proactive_prompts_sent += 1
-                    missing_f = missing_requested_files[0]
-                    self.memory.add_assistant_message(content=content)
-                    missing_file_hint = (
-                        f"[SISTEMA AETHER - ENTREGABLE FALTANTE]: La solicitud del usuario requirió crear '{missing_f}', pero este archivo no existe en el disco.\n"
-                        f"• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a 'write_file(path=\"{missing_f}\", content=...)' para implementar este archivo."
-                    )
-                    self.memory.add_user_message(content=missing_file_hint)
-                    continue
-
                 tests_requested = any(w in prompt_lower for w in ["test", "tests", "prueba", "pruebas", "pytest"])
-                tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
-                missing_tests = tests_requested and not tests_exist
-                tests_pending_execution = (tests_requested or tests_exist) and tests_exist and not tests_executed_in_turn
+                is_code_task = (
+                    bool(requested_py_files)
+                    or tests_requested
+                    or any(k in prompt_lower for k in [
+                        "implementa", "crea ", "desarrolla", "construye", "programa",
+                        "refactoriza", "corrige", "depura", "código", "funcion", "función",
+                        "clase ", "modulo", "módulo", "script", "escribe un script", "haz un archivo"
+                    ])
+                    or files_modified_in_turn
+                )
 
-                if (is_premature_deflection or missing_tests or tests_pending_execution) and proactive_prompts_sent < 2 and iteration < self.max_iterations - 1:
-                    proactive_prompts_sent += 1
-                    self.memory.add_assistant_message(content=content)
-                    if tests_pending_execution:
-                        proactive_hint = (
-                            "[SISTEMA AETHER - VERIFICACIÓN OBLIGATORIA]: Los archivos de código y pruebas ya existen en el disco, "
-                            "pero AÚN NO HAS EJECUTADO LOS TESTS en este turno.\n"
-                            "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE ser la llamada a herramienta 'run_tests()' o "
-                            "'run_command(command=\"pytest\")' para verificar que las pruebas pasen en verde antes de concluir la tarea."
+                if is_code_task:
+                    if missing_requested_files and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                        proactive_prompts_sent += 1
+                        missing_f = missing_requested_files[0]
+                        self.memory.add_assistant_message(content=content)
+                        missing_file_hint = (
+                            f"[SISTEMA AETHER - ENTREGABLE FALTANTE]: La solicitud del usuario requirió crear '{missing_f}', pero este archivo no existe en el disco.\n"
+                            f"• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a 'write_file(path=\"{missing_f}\", content=...)' para implementar este archivo."
                         )
-                    elif is_premature_deflection:
-                        proactive_hint = (
-                            "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo de élite, "
-                            "NUNCA te detengas a medias para preguntar '¿Qué siguiente paso te gustaría que realice?' ni pidas confirmaciones al usuario.\n"
-                            "• Tu responsabilidad es completar y verificar la tarea íntegramente de forma autónoma. Si has implementado un módulo o componente, "
-                            "tu siguiente acción DEBE SER crear las pruebas unitarias exhaustivas correspondientes (ej: 'test_<modulo>.py') usando 'write_file' "
-                            "para validar todos los requisitos solicitados (incluyendo transacciones anidadas y casos límite), y correrlas con 'run_tests()'.\n"
-                            "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o preguntas pasivas. Emite la llamada a 'write_file' ahora."
-                        )
-                    else:
-                        proactive_hint = (
-                            "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo, NUNCA te detengas a medias para preguntar "
-                            "'¿deseas que siga creando pruebas?'. La instrucción inicial ya solicitó implementar el código y sus pruebas unitarias.\n"
-                            "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o confirmaciones como 'Entendido'. "
-                            "Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a la herramienta 'write_file' para crear el archivo de pruebas 'test_*.py'."
-                        )
-                    self.memory.add_user_message(content=proactive_hint)
-                    continue
+                        self.memory.add_user_message(content=missing_file_hint)
+                        continue
+
+                    tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
+                    missing_tests = tests_requested and not tests_exist
+                    tests_pending_execution = (tests_requested or files_modified_in_turn) and tests_exist and not tests_executed_in_turn
+
+                    if (is_premature_deflection or missing_tests or tests_pending_execution) and proactive_prompts_sent < 2 and iteration < self.max_iterations - 1:
+                        proactive_prompts_sent += 1
+                        self.memory.add_assistant_message(content=content)
+                        if tests_pending_execution:
+                            proactive_hint = (
+                                "[SISTEMA AETHER - VERIFICACIÓN OBLIGATORIA]: Los archivos de código y pruebas ya existen en el disco, "
+                                "pero AÚN NO HAS EJECUTADO LOS TESTS en este turno.\n"
+                                "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE ser la llamada a herramienta 'run_tests()' o "
+                                "'run_command(command=\"pytest\")' para verificar que las pruebas pasen en verde antes de concluir la tarea."
+                            )
+                        elif is_premature_deflection:
+                            test_target_name = f"'test_{Path(requested_py_files[0]).stem}.py'" if requested_py_files else "'test_modulo.py'"
+                            proactive_hint = (
+                                "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo de élite, "
+                                "NUNCA te detengas a medias para preguntar '¿Qué siguiente paso te gustaría que realice?' ni pidas confirmaciones al usuario.\n"
+                                f"• Tu responsabilidad es completar y verificar la tarea íntegramente de forma autónoma. Si has implementado un módulo o componente, "
+                                f"tu siguiente acción DEBE SER crear las pruebas unitarias exhaustivas correspondientes (ej: {test_target_name}) usando 'write_file' "
+                                "para validar todos los requisitos solicitados (incluyendo transacciones anidadas y casos límite), y correrlas con 'run_tests()'.\n"
+                                "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o preguntas pasivas. Emite la llamada a 'write_file' ahora."
+                            )
+                        else:
+                            proactive_hint = (
+                                "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo, NUNCA te detengas a medias para preguntar "
+                                "'¿deseas que siga creando pruebas?'. La instrucción inicial ya solicitó implementar el código y sus pruebas unitarias.\n"
+                                "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o confirmaciones como 'Entendido'. "
+                                "Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a la herramienta 'write_file' para crear el archivo de pruebas 'test_*.py'."
+                            )
+                        self.memory.add_user_message(content=proactive_hint)
+                        continue
 
                 self.memory.add_assistant_message(content=content)
                 self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content)
@@ -1092,6 +1106,7 @@ class AgentOrchestrator:
                     is_mutation = is_success and not has_syntax_err and not ("Sin cambios" in tool_result)
                     if is_mutation:
                         files_modified_since_cmd_fail = True
+                        files_modified_in_turn = True
                         failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
                         last_failed_tool_key = None
                         consecutive_edit_failures = 0

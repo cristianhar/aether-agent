@@ -26,7 +26,7 @@ def set_approval_callback(callback: Optional[Callable[[str, str], bool]]):
 
 
 def update_plan(
-    plan_steps: List[str],
+    plan_steps: Optional[List[str]] = None,
     current_step: int = 1,
     acceptance_criteria: Optional[List[str]] = None,
     is_completed: bool = False,
@@ -37,6 +37,20 @@ def update_plan(
     Sincroniza tanto el JSON estructurado (.aether/current_plan.json) como el artefacto Markdown (.aether/plans/plan_activo.md).
     """
     global _CURRENT_PLAN
+    if plan_steps is None:
+        if _CURRENT_PLAN and _CURRENT_PLAN.get("steps"):
+            plan_steps = _CURRENT_PLAN.get("steps", [])
+        else:
+            plan_file = Path.cwd() / ".aether" / "current_plan.json"
+            if plan_file.exists():
+                try:
+                    data = json.loads(plan_file.read_text(encoding="utf-8"))
+                    plan_steps = data.get("steps", [])
+                except Exception:
+                    plan_steps = []
+            else:
+                plan_steps = ["Tarea general de usuario"]
+
     completed = is_completed or (len(plan_steps) > 0 and current_step > len(plan_steps))
 
     # Verificación de integridad de archivos requeridos antes de permitir completar el plan
