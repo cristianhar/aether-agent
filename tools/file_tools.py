@@ -221,6 +221,18 @@ def write_file(path: str, content: str) -> str:
     file_path = get_absolute_path(path)
     try:
         content = auto_heal_missing_imports(file_path, content)
+
+        # Chequeo de idempotencia SHA-256 para evitar bucles de sobreescritura idéntica
+        if file_path.exists() and file_path.is_file():
+            existing_hash = calculate_file_hash(file_path)
+            new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            if existing_hash == new_hash:
+                return (
+                    f"Aviso / Sin cambios: El archivo '{path}' ya existe y contiene exactamente este mismo código (SHA256 idéntico).\n"
+                    "• No vuelvas a llamar a 'write_file' con el mismo contenido.\n"
+                    "• Procede al siguiente paso de tu tarea (ej: crear el archivo de pruebas con 'write_file' o ejecutar las pruebas con 'run_tests')."
+                )
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)

@@ -538,6 +538,7 @@ class AgentOrchestrator:
         action_history: List[str] = []
         plan_active_in_turn: bool = False
         plan_completed_in_turn: bool = False
+        proactive_prompts_sent: int = 0
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -683,13 +684,14 @@ class AgentOrchestrator:
                 tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
                 missing_tests = tests_requested and not tests_exist
 
-                if (is_premature_deflection or missing_tests) and iteration < self.max_iterations - 1:
+                if (is_premature_deflection or missing_tests) and proactive_prompts_sent < 1 and iteration < self.max_iterations - 1:
+                    proactive_prompts_sent += 1
                     self.memory.add_assistant_message(content=content)
                     proactive_hint = (
                         "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo, NUNCA te detengas a medias para preguntar "
                         "'¿deseas que siga creando pruebas?'. La instrucción inicial ya solicitó implementar el código y sus pruebas unitarias.\n"
-                        "• ACCIÓN OBLIGATORIA: Continúa de inmediato creando el archivo de tests correspondiente usando 'write_file', "
-                        "ejecuta las pruebas con 'run_tests' o 'run_command', y concluye el trabajo."
+                        "• ACCIÓN OBLIGATORIA: Está TERMINANTEMENTE PROHIBIDO responder con texto plano de cortesía o confirmaciones como 'Entendido'. "
+                        "Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a la herramienta 'write_file' para crear el archivo de pruebas 'test_*.py'."
                     )
                     self.memory.add_user_message(content=proactive_hint)
                     continue
@@ -861,10 +863,10 @@ class AgentOrchestrator:
                     elif tool_name == "write_file" and is_success:
                         executed_edits.clear()
 
-                    if is_success and not has_syntax_err:
+                    is_mutation = is_success and not has_syntax_err and not ("Sin cambios" in tool_result)
+                    if is_mutation:
                         files_modified_since_cmd_fail = True
                         failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
-                        action_history.clear()  # ¡Mutación real confirmada en disco! Limpiar ciclo previo
                         last_failed_tool_key = None
                         consecutive_edit_failures = 0
                         if target_path:
