@@ -37,6 +37,10 @@ def read_file(path: str, start_line: int = 1, end_line: int = 200) -> str:
     """
     Lee un rango de líneas de un archivo de texto con numeración de líneas.
     """
+    p_clean = path.strip().strip("'\"")
+    if p_clean.startswith("<") and p_clean.endswith(">"):
+        return f"Error: '{p_clean}' es un marcador de posición, no una ruta de archivo real. ACCIÓN OBLIGATORIA: Proporciona la ruta del archivo real que deseas leer."
+
     file_path = get_absolute_path(path)
     if not file_path.exists():
         return (
@@ -242,6 +246,17 @@ def write_file(path: str, content: str) -> str:
     Crea o sobrescribe un archivo asegurando la creación recursiva de directorios padre
     e incorpora validación sintáctica automática (Auto-Linter).
     """
+    p_clean = path.strip().strip("'\"")
+    if p_clean.startswith("<") and p_clean.endswith(">"):
+        return f"Error: '{p_clean}' es un marcador de posición, no una ruta de archivo real. ACCIÓN OBLIGATORIA: Proporciona la ruta del archivo real que deseas escribir."
+
+    c_clean = content.strip().strip("'\"")
+    if (c_clean.startswith("<") and c_clean.endswith(">") and len(c_clean) < 40) or c_clean in ["...", "TODO", "pass"]:
+        return (
+            f"Error: El contenido enviado '{c_clean}' es un marcador de posición (placeholder), no código real ejecutable.\n"
+            f"• ACCIÓN OBLIGATORIA: Debes enviar el código fuente completo que deseas guardar en '{path}'."
+        )
+
     file_path = get_absolute_path(path)
     try:
         # Normalización de strings con escapes literales (\n, \t) producidos por LLMs locales
@@ -271,7 +286,7 @@ def write_file(path: str, content: str) -> str:
             msg += (
                 f"\n{syntax_warn}\n"
                 f"🚨 [ACCIÓN OBLIGATORIA]: El archivo '{path}' fue guardado pero CONTIENE UN ERROR DE SINTAXIS. "
-                "Tu PRÓXIMA herramienta DEBE ser 'edit_file' para corregir la línea indicada antes de cualquier otra cosa. "
+                f"Tu PRÓXIMA herramienta DEBE ser 'write_file(path=\"{path}\", content=...)' para reescribir el archivo con la sintaxis corregida, o 'edit_file'. "
                 "NUNCA llames a 'run_command' con un archivo que tiene errores de sintaxis."
             )
         return msg
@@ -284,12 +299,18 @@ def edit_file(
     target: Optional[str] = None,
     replacement: Optional[str] = None,
     content: Optional[str] = None,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
 ) -> str:
     """
     Reemplaza el bloque 'target' por 'replacement' dentro del archivo.
     Incluye fallback con Fuzzy Matching inteligente, Auto-Linter sintáctico
     y auto-rescate a reescritura completa si target no es provisto.
     """
+    p_clean = path.strip().strip("'\"")
+    if p_clean.startswith("<") and p_clean.endswith(">"):
+        return f"Error: '{p_clean}' es un marcador de posición, no una ruta de archivo real."
+
     file_path = get_absolute_path(path)
     if not file_path.exists():
         return (
@@ -300,7 +321,21 @@ def edit_file(
     if file_path.is_dir():
         return f"Error: '{path}' es un directorio."
 
-    # Auto-rescate: Si target no fue especificado (None) pero se envió content, reescribir con write_file
+    # Soporte tolerante para modelos locales que envían start_line/end_line a edit_file
+    if start_line is not None:
+        if target is None and (replacement is None or not str(replacement).strip()):
+            return read_file(path=path, start_line=start_line, end_line=end_line or start_line)
+        elif target is None and replacement is not None:
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                s_idx = max(0, start_line - 1)
+                e_idx = min(len(lines), end_line or start_line)
+                target = "".join(lines[s_idx:e_idx])
+            except Exception:
+                pass
+
+    # Auto-rescate: Si target no fue especificado (None) pero se envió content/replacement, reescribir con write_file
     rep_text = replacement if replacement is not None else content
     if target is None and rep_text and rep_text.strip():
         return write_file(path=path, content=rep_text)
