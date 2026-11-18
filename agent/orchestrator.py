@@ -669,12 +669,36 @@ class AgentOrchestrator:
                     self.memory.add_user_message(content=plan_guard_hint)
                     continue
 
+                # Guardián de Proactividad Autónoma: Evitar detenciones prematuras o preguntas pasivas
+                premature_question_markers = [
+                    "¿deseas que", "¿quieres que", "¿te gustaría que",
+                    "deseas que continúe", "deseas que siga", "¿continuamos?",
+                    "¿procedo a", "¿quieres que proceda", "puedo ayudarte"
+                ]
+                content_lower = content.lower()
+                is_premature_deflection = any(m in content_lower for m in premature_question_markers)
+
+                prompt_lower = user_prompt.lower()
+                tests_requested = any(w in prompt_lower for w in ["test", "tests", "prueba", "pruebas", "pytest"])
+                tests_exist = bool(list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("*_test.py")) or (Path.cwd() / "tests").exists())
+                missing_tests = tests_requested and not tests_exist
+
+                if (is_premature_deflection or missing_tests) and iteration < self.max_iterations - 1:
+                    self.memory.add_assistant_message(content=content)
+                    proactive_hint = (
+                        "[SISTEMA AETHER - PROACTIVIDAD AUTÓNOMA]: Como agente programador autónomo, NUNCA te detengas a medias para preguntar "
+                        "'¿deseas que siga creando pruebas?'. La instrucción inicial ya solicitó implementar el código y sus pruebas unitarias.\n"
+                        "• ACCIÓN OBLIGATORIA: Continúa de inmediato creando el archivo de tests correspondiente usando 'write_file', "
+                        "ejecuta las pruebas con 'run_tests' o 'run_command', y concluye el trabajo."
+                    )
+                    self.memory.add_user_message(content=proactive_hint)
+                    continue
+
                 self.memory.add_assistant_message(content=content)
                 self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content)
                 final_answer = content
                 self.set_state(AgentState.COMPLETED)
                 break
-
             # Si hay llamadas a herramientas, registrar mensaje
             self.memory.add_assistant_message(content=content, tool_calls=tool_calls)
             self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=content, tool_calls=tool_calls)
