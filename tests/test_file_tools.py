@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from tools.file_tools import read_file, write_file, edit_file, delete_file, move_file
+from tools.file_tools import read_file, write_file, edit_file, delete_file, move_file, find_fuzzy_target
 
 
 def test_write_and_read_file(tmp_path):
@@ -213,6 +213,45 @@ def test_edit_file_target_none_small_snippet_rejected_safely(tmp_path):
     res = edit_file(str(f), target=None, replacement="x = 1\n")
     assert "Falta el parámetro 'target' obligatorio" in res
     assert f.read_text(encoding="utf-8") == initial_code
+
+
+def test_edit_file_function_block_auto_replacement_by_signature(tmp_path):
+    """Verifica el reemplazo automático de una función completa por coincidencia de firma."""
+    f = tmp_path / "calc.py"
+    initial_code = (
+        "import math\n\n"
+        "def compute_discount(price: float) -> float:\n"
+        "    # Old faulty logic\n"
+        "    return price * 0.5\n\n"
+        "def other_func():\n"
+        "    return 42\n"
+    )
+    f.write_text(initial_code, encoding="utf-8")
+
+    new_func = (
+        "def compute_discount(price: float) -> float:\n"
+        "    if price > 100:\n"
+        "        return price * 0.9\n"
+        "    return price\n"
+    )
+
+    res = edit_file(str(f), target=None, replacement=new_func)
+    assert "actualizado correctamente" in res
+    content = f.read_text(encoding="utf-8")
+    assert "Old faulty logic" not in content
+    assert "price > 100" in content
+    assert "def other_func():" in content
+    assert "import math" in content
+
+
+def test_find_fuzzy_target_normalizes_empty_lines():
+    """Verifica que find_fuzzy_target ignore líneas vacías accidentales al inicio y final."""
+    content = "def add(a, b):\n    return a + b\n"
+    target = "\n\ndef add(a, b):\n    return a + b\n\n"
+    match = find_fuzzy_target(content, target)
+    assert match is not None
+    matched_str, msg, delta = match
+    assert "def add(a, b):" in matched_str
 
 
 

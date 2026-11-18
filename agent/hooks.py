@@ -16,7 +16,7 @@ class HookManager:
         self._post_hooks: List[Callable[[str, Dict[str, Any], str], str]] = []
 
     def set_mode(self, new_mode: str):
-        if new_mode in ["agent", "ask", "plan"]:
+        if new_mode in ["agent", "ask", "plan", "review"]:
             self.mode = new_mode
 
     def register_pre_hook(self, hook_fn: Callable[[str, Dict[str, Any]], Tuple[bool, str]]):

@@ -17,7 +17,8 @@ from rich.markdown import Markdown
 from rich.table import Table
 from rich.rule import Rule
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory, InMemoryHistory
 
 from agent.orchestrator import AgentOrchestrator
 from agent.checkpoints import SafeCheckpointManager
@@ -240,7 +241,81 @@ def render_response(answer: str):
     console.print()
 
 
+COMMANDS_META = {
+    "/help": "Muestra la guía completa de comandos y atajos",
+    "/plan": "Diseñar o consultar el plan de arquitectura activo",
+    "/test": "Ejecuta la suite de pruebas unitarias con pytest",
+    "/diff": "Muestra las diferencias Git respecto al último commit",
+    "/commit": "Genera un commit atómico con mensaje semántico",
+    "/mode": "Cambia el modo operativo: /mode [agent|ask|plan|review]",
+    "/model": "Cambia el modelo de Ollama en caliente",
+    "/compact": "Compacta el historial para liberar contexto",
+    "/undo": "Revierte al checkpoint o commit anterior",
+    "/checkpoint": "Crea un punto de restauración Git inmediato",
+    "/map": "Genera el mapa estructural del repositorio",
+    "/status": "Muestra el estado del agente y métricas VRAM",
+    "/sessions": "Lista el historial de sesiones SQLite",
+    "/resume": "Reanuda una sesión previa por session_id",
+    "/memory": "Gestiona hechos y reglas en memoria a largo plazo",
+    "/telemetry": "Muestra telemetría de latencia y herramientas",
+    "/export": "Exporta la sesión actual a un archivo Markdown",
+    "/voice": "Instrucciones de integración con Asistente de Voz",
+    "/clear": "Limpia el contexto y memoria de la sesión actual",
+    "/cd": "Cambia el directorio de trabajo del agente",
+    "/exit": "Finaliza y sale de la consola de AETHER",
+    "/quit": "Finaliza y sale de la consola de AETHER",
+}
+
+COMPLETION_WORDS = list(COMMANDS_META.keys()) + [
+    "/mode agent", "/mode ask", "/mode plan", "/mode review",
+    "/memory list", "/checkpoint create", "/checkpoint undo"
+]
+
+
 def confirm_prompt(question: str) -> bool:
+    """Solicita confirmación al usuario para acciones de riesgo o revisiones de código."""
+    if "--- a/" in question or "+++ b/" in question or "@@ " in question:
+        lines = question.splitlines()
+        diff_lines = []
+        header_lines = []
+        footer_lines = []
+        in_diff = False
+        finished_diff = False
+
+        for line in lines:
+            if line.startswith("--- ") or line.startswith("+++ ") or line.startswith("@@ "):
+                in_diff = True
+                diff_lines.append(line)
+            elif in_diff and (line.startswith("+") or line.startswith("-") or line.startswith(" ") or not line.strip()):
+                diff_lines.append(line)
+            elif in_diff:
+                in_diff = False
+                finished_diff = True
+                footer_lines.append(line)
+            elif not finished_diff:
+                header_lines.append(line)
+            else:
+                footer_lines.append(line)
+
+        header_text = "\n".join(header_lines).strip()
+        footer_text = "\n".join(footer_lines).strip()
+        diff_text = "\n".join(diff_lines)
+
+        if header_text:
+            console.print(f"\n[bold magenta]🔍 MODO REVIEW — SUPERVISIÓN DE CAMBIOS[/bold magenta]\n[dim]{header_text}[/dim]")
+        if diff_text:
+            console.print(
+                Panel(
+                    Syntax(diff_text, "diff", theme="monokai", line_numbers=True),
+                    title="[bold magenta]🔍 Vista Previa de Cambios (Unified Diff)[/bold magenta]",
+                    border_style="magenta",
+                    box=box.ROUNDED,
+                )
+            )
+        prompt_label = footer_text or "¿Autorizar esta modificación?"
+        resp = console.input(f"[bold yellow]{prompt_label} (s/N): [/bold yellow]").strip().lower()
+        return resp in ["s", "si", "y", "yes"]
+
     console.print(f"\n[bold red]⚠️  ADVERTENCIA DE SEGURIDAD[/bold red]\n{question}")
     resp = console.input("[bold yellow]¿Autorizar acción? (s/N): [/bold yellow]").strip().lower()
     return resp in ["s", "si", "y", "yes"]
@@ -275,8 +350,26 @@ def main():
         render_response(answer)
         return
 
+    # Inicialización de historial persistente y auto-completado por Tab
+    cli_completer = WordCompleter(
+        COMPLETION_WORDS,
+        meta_dict=COMMANDS_META,
+        ignore_case=True,
+        WORD=True,
+    )
+    history_file = Path.cwd() / ".aether" / "cli_history.txt"
     try:
-        session = PromptSession(history=InMemoryHistory())
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+        cli_history = FileHistory(str(history_file))
+    except Exception:
+        cli_history = InMemoryHistory()
+
+    try:
+        session = PromptSession(
+            history=cli_history,
+            completer=cli_completer,
+            complete_while_typing=False,
+        )
     except Exception:
         session = None
 
@@ -289,6 +382,12 @@ def main():
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
             break
+        except Exception:
+            try:
+                user_input = input("\nAETHER ❯ ").strip()
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
+                break
 
         if not user_input:
             continue
@@ -458,17 +557,18 @@ def main():
             parts = user_input.split()
             if len(parts) > 1:
                 target_mode = parts[1].lower().strip()
-                if target_mode in ["agent", "ask", "plan"]:
+                if target_mode in ["agent", "ask", "plan", "review"]:
                     orchestrator.hooks.set_mode(target_mode)
-                    mode_colors = {"agent": "green", "ask": "yellow", "plan": "cyan"}
+                    mode_colors = {"agent": "green", "ask": "yellow", "plan": "cyan", "review": "magenta"}
                     mode_desc = {
                         "agent": "Modo AGENT: Plenos poderes de creación, edición y ejecución autónoma.",
                         "ask": "Modo ASK (Solo Lectura): El agente solo responde dudas e inspecciona código sin modificarlo.",
-                        "plan": "Modo PLAN: Diseña el plan de arquitectura antes de tocar código."
+                        "plan": "Modo PLAN: Diseña el plan de arquitectura antes de tocar código.",
+                        "review": "Modo REVIEW: Supervisión interactiva con previsualización de diffs unificados antes de cada cambio en disco."
                     }
                     console.print(f"[bold {mode_colors[target_mode]}]{mode_desc[target_mode]}[/bold {mode_colors[target_mode]}]")
                 else:
-                    console.print("[bold red]Modo no válido.[/bold red] Opciones: /mode agent | /mode ask | /mode plan")
+                    console.print("[bold red]Modo no válido.[/bold red] Opciones: /mode agent | /mode ask | /mode plan | /mode review")
             else:
                 console.print(f"[bold yellow]Modo actual:[/] {orchestrator.hooks.mode.upper()}")
             continue
@@ -553,7 +653,7 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
             help_table.add_row("/map", "Muestra el mapa arquitectónico completo del repositorio (Repo-Map)")
             help_table.add_row("/compact", "Compacta el historial de conversación en un resumen ejecutivo liberando VRAM")
             help_table.add_row("/status", "Muestra el estado de Git, modo operativo y telemetría de tokens en VRAM")
-            help_table.add_row("/mode [agent|ask|plan]", "Cambia el modo operativo (Agent: autónomo total, Ask: solo lectura, Plan: arquitectura)")
+            help_table.add_row("/mode [agent|ask|plan|review]", "Cambia el modo operativo (Agent: autónomo total, Ask: solo lectura, Plan: arquitectura, Review: diff interactivo)")
             help_table.add_row("/model <nombre>", "Cambia el modelo de Ollama en caliente (ej: /model qwen2.5-coder:7b)")
             help_table.add_row("/undo", "Revierte al último checkpoint seguro en 1 segundo")
             help_table.add_row("/checkpoint [mensaje]", "Guarda un punto de restauración seguro con Git")

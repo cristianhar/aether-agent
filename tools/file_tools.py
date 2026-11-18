@@ -202,6 +202,12 @@ def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
     """
     content_lines = content.split("\n")
     target_lines = [l.rstrip() for l in target.split("\n")]
+    # Normalizar líneas vacías al inicio y final
+    while target_lines and not target_lines[0].strip():
+        target_lines.pop(0)
+    while target_lines and not target_lines[-1].strip():
+        target_lines.pop()
+
     if not target_lines:
         return None
 
@@ -229,7 +235,30 @@ def find_fuzzy_target(content: str, target: str) -> Optional[tuple]:
         delta = max(0, w_indent - t_indent)
         return matched_str, " (aplicado mediante coincidencia inteligente de espacios)", delta
 
-    # Comparación 3: Coincidencia difusa profunda con difflib (para omisiones de palabras clave como 'async' o typos leves)
+    # Comparación 3: Coincidencia por bloque de función o clase única
+    if len(target_lines) >= 1:
+        first_stripped = target_lines[0].strip()
+        if any(first_stripped.startswith(kw) for kw in ["def ", "class ", "async def "]):
+            func_sig = first_stripped.split("(")[0].strip()
+            candidate_indices = [
+                i for i, line in enumerate(content_lines)
+                if line.strip().split("(")[0].strip() == func_sig
+            ]
+            if len(candidate_indices) == 1:
+                start_i = candidate_indices[0]
+                base_indent = len(content_lines[start_i]) - len(content_lines[start_i].lstrip())
+                end_i = start_i + 1
+                while end_i < len(content_lines):
+                    line = content_lines[end_i]
+                    if line.strip():
+                        line_indent = len(line) - len(line.lstrip())
+                        if line_indent <= base_indent:
+                            break
+                    end_i += 1
+                matched_func = "\n".join(content_lines[start_i:end_i])
+                return matched_func, f" (reemplazo automático de la función/bloque '{func_sig}')", 0
+
+    # Comparación 4: Coincidencia difusa profunda con difflib (para omisiones de palabras clave como 'async' o typos leves)
     if not matches and m >= 2:
         from difflib import SequenceMatcher
         best_ratio = 0.0
@@ -385,28 +414,52 @@ def edit_file(
 
     # Si target fue omitido (target is None):
     if target is None:
-        # 1. Si el archivo actual está vacío o rep_text es una reescritura de tamaño comparable (>= 70%)
-        if not file_content.strip() or len(rep_text) >= len(file_content) * 0.7:
+        # Si el archivo actual está completamente vacío
+        if not file_content.strip():
             return write_file(path=path, content=rep_text)
 
-        # 2. Búsqueda inteligente de target unívoco para fragmentos (ej: 'store.rollback()')
-        rep_stripped = rep_text.strip()
-        lines = file_content.splitlines()
+        # 1. Detección automática de bloque de función o clase a reemplazar por firma
+        rep_lines_nonempty = [l.strip() for l in rep_text.splitlines() if l.strip()]
         candidate_target = None
-        if rep_stripped:
-            prefix = ""
-            if "(" in rep_stripped:
-                prefix = rep_stripped.split("(")[0].strip()
-            elif "=" in rep_stripped:
-                prefix = rep_stripped.split("=")[0].strip()
+        if rep_lines_nonempty and any(rep_lines_nonempty[0].startswith(kw) for kw in ["def ", "class ", "async def "]):
+            func_sig = rep_lines_nonempty[0].split("(")[0].strip()
+            lines_c = file_content.splitlines()
+            cand_indices = [i for i, l in enumerate(lines_c) if l.strip().split("(")[0].strip() == func_sig]
+            if len(cand_indices) == 1:
+                start_i = cand_indices[0]
+                base_indent = len(lines_c[start_i]) - len(lines_c[start_i].lstrip())
+                end_i = start_i + 1
+                while end_i < len(lines_c):
+                    line = lines_c[end_i]
+                    if line.strip():
+                        line_indent = len(line) - len(line.lstrip())
+                        if line_indent <= base_indent:
+                            break
+                    end_i += 1
+                candidate_target = "\n".join(lines_c[start_i:end_i])
 
-            if prefix and len(prefix) >= 3:
-                matching_lines = [
-                    l for l in lines
-                    if prefix in l and l.strip() != rep_stripped
-                ]
-                if len(matching_lines) == 1:
-                    candidate_target = matching_lines[0]
+        # 2. Búsqueda inteligente de target unívoco para fragmentos (ej: 'store.rollback()')
+        if not candidate_target:
+            rep_stripped = rep_text.strip()
+            lines = file_content.splitlines()
+            if rep_stripped:
+                prefix = ""
+                if "(" in rep_stripped:
+                    prefix = rep_stripped.split("(")[0].strip()
+                elif "=" in rep_stripped:
+                    prefix = rep_stripped.split("=")[0].strip()
+
+                if prefix and len(prefix) >= 3:
+                    matching_lines = [
+                        l for l in lines
+                        if prefix in l and l.strip() != rep_stripped
+                    ]
+                    if len(matching_lines) == 1:
+                        candidate_target = matching_lines[0]
+
+        # 3. Si no se encontró bloque candidato, pero rep_text es una reescritura total comparable (>= 70%)
+        if not candidate_target and len(rep_text) >= len(file_content) * 0.7:
+            return write_file(path=path, content=rep_text)
 
         if candidate_target:
             target = candidate_target

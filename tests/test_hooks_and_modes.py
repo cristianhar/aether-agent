@@ -11,9 +11,12 @@ def test_hooks_mode_switching():
     hooks.set_mode("plan")
     assert hooks.mode == "plan"
 
+    hooks.set_mode("review")
+    assert hooks.mode == "review"
+
     # Ignora modos no válidos
     hooks.set_mode("invalid_mode")
-    assert hooks.mode == "plan"
+    assert hooks.mode == "review"
 
 def test_hooks_pre_tool_use_ask_mode_blocks_modifications():
     hooks = HookManager(mode="ask")
@@ -118,5 +121,68 @@ def test_hooks_blocks_gitignore_tampering():
     allowed, reason = hooks.pre_tool_use("edit_file", {"path": ".gitignore", "target": ".aether\n", "replacement": ""})
     assert allowed is False
     assert ".gitignore bloqueada" in reason
+
+
+def test_review_mode_diff_generation(tmp_path):
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator()
+
+    # 1. Diff write_file (nuevo archivo)
+    f = tmp_path / "hello.py"
+    diff_new = orchestrator._generate_tool_diff("write_file", {"path": str(f), "content": "def hello(): pass\n"})
+    assert "+++ b/" in diff_new
+    assert "+def hello(): pass" in diff_new
+
+    # 2. Diff edit_file (archivo existente)
+    f.write_text("def hello():\n    return 1\n", encoding="utf-8")
+    diff_edit = orchestrator._generate_tool_diff("edit_file", {"path": str(f), "target": "return 1", "replacement": "return 2"})
+    assert "-    return 1" in diff_edit
+    assert "+    return 2" in diff_edit
+
+    # 3. Diff delete_file
+    diff_del = orchestrator._generate_tool_diff("delete_file", {"path": str(f)})
+    assert "--- a/" in diff_del
+    assert "-def hello():" in diff_del
+
+
+def test_review_mode_confirmation_flow(tmp_path):
+    from agent.orchestrator import AgentOrchestrator
+    f = tmp_path / "app.py"
+    f.write_text("initial = 1\n", encoding="utf-8")
+
+    # Caso A: Desarrollador rechaza los cambios
+    calls_made = []
+    def reject_callback(msg: str) -> bool:
+        calls_made.append(msg)
+        return False
+
+    orchestrator = AgentOrchestrator(confirm_callback=reject_callback)
+    orchestrator.hooks.set_mode("review")
+
+    diff_text = orchestrator._generate_tool_diff("write_file", {"path": str(f), "content": "initial = 99\n"})
+    assert "+initial = 99" in diff_text
+    should_run = orchestrator.confirm_callback(diff_text)
+    assert should_run is False
+    assert len(calls_made) == 1
+    assert f.read_text(encoding="utf-8") == "initial = 1\n"
+
+    # Caso B: Desarrollador aprueba los cambios
+    def accept_callback(msg: str) -> bool:
+        return True
+
+    orchestrator_acc = AgentOrchestrator(confirm_callback=accept_callback)
+    orchestrator_acc.hooks.set_mode("review")
+    should_run = orchestrator_acc.confirm_callback(diff_text)
+    assert should_run is True
+
+
+def test_cli_tab_completion_commands():
+    import main
+    assert hasattr(main, "COMMANDS_META")
+    assert hasattr(main, "COMPLETION_WORDS")
+    for cmd in ["/help", "/plan", "/test", "/diff", "/commit", "/mode", "/model", "/compact", "/undo", "/checkpoint", "/exit"]:
+        assert cmd in main.COMMANDS_META
+        assert cmd in main.COMPLETION_WORDS
+    assert "/mode review" in main.COMPLETION_WORDS
 
 
