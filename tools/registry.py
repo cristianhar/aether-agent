@@ -16,7 +16,7 @@ from tools.web_tools import search_web, fetch_web_page
 from tools.diagnostics import get_diagnostics
 from tools.patch_engine import PatchEngine
 from tools.process_manager import ProcessManager
-from tools.agent_tools import update_plan, request_approval, get_project_instructions
+from tools.agent_tools import update_plan, get_plan, request_approval, get_project_instructions
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
 from tools.mcp_client import list_mcp_tools, call_mcp_tool_wrapper
@@ -548,6 +548,17 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_plan",
+            "description": "[ARTEFACTO PLAN] Consulta y lee el plan de ejecución activo y los criterios de aceptación definidos para la tarea actual.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "request_approval",
             "description": "Solicita autorización explícita al desarrollador antes de realizar una acción de alto impacto o destructiva.",
             "parameters": {
@@ -811,6 +822,7 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "safe_checkpoint": safe_checkpoint_tool,
     "safe_undo_checkpoint": safe_undo_checkpoint_tool,
     "update_plan": update_plan,
+    "get_plan": get_plan,
     "request_approval": request_approval,
     "get_project_instructions": get_project_instructions,
     "find_definition": find_definition,

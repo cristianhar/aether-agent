@@ -14,6 +14,15 @@ def test_update_plan():
     assert "3. ⬜ Verificar tests" in result
     assert "Todos los tests pasan en verde" in result
 
+    # Verificar artefacto Markdown generado
+    from tools.agent_tools import get_plan
+    plan_md = get_plan()
+    assert "# 📋 Plan de Ejecución Activo — AETHER" in plan_md
+    assert "- [x] **Paso 1:** Auditar repositorio ✅" in plan_md
+    assert "- [ ] **Paso 2:** Implementar patch engine ⏳ [EN PROGRESO]" in plan_md
+    assert "- [ ] **Paso 3:** Verificar tests ⬜" in plan_md
+    assert "- [ ] Todos los tests pasan en verde" in plan_md
+
 
 def test_request_approval_callback():
     approved = False

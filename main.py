@@ -303,6 +303,34 @@ def main():
                 console.print(f"[bold yellow]Modo actual:[/] {orchestrator.hooks.mode.upper()}")
             continue
 
+        elif user_input.startswith("/plan"):
+            plan_goal = user_input[len("/plan"):].strip()
+            orchestrator.hooks.set_mode("plan")
+            console.print("[bold cyan]🧭 Modo PLAN activado (Planificación Arquitectónica).[/bold cyan]")
+
+            if not plan_goal:
+                plan_file = Path.cwd() / ".aether" / "plans" / "plan_activo.md"
+                if plan_file.is_file():
+                    try:
+                        content = plan_file.read_text(encoding="utf-8")
+                        console.print(Panel(Markdown(content), title="[bold cyan]📋 Plan Activo de AETHER[/bold cyan]", border_style="cyan"))
+                    except Exception as e:
+                        console.print(f"[bold red]Error al leer plan:[/] {e}")
+                else:
+                    console.print("[dim]No hay un plan activo en .aether/plans/plan_activo.md.[/dim]\n[bold cyan]Para diseñar un nuevo plan, escribe:[/] /plan <descripción de la tarea>")
+            else:
+                prompt_plan = (
+                    f"El usuario desea diseñar un plan arquitectónico para la siguiente tarea:\n"
+                    f"<task>\n{plan_goal}\n</task>\n"
+                    f"Explora la arquitectura existente con 'get_repo_map' o 'search_codebase' si es necesario, "
+                    f"y llama OBLIGATORIAMENTE a 'update_plan' con los hitos secuenciales ordenados y los criterios de aceptación observables. "
+                    f"NO intentes modificar archivos de código fuente todavía."
+                )
+                with console.status("[bold cyan]AETHER analizando y diseñando plan arquitectónico...[/bold cyan]", spinner="dots"):
+                    plan_result = orchestrator.run_turn(prompt_plan)
+                console.print(Markdown(plan_result))
+            continue
+
         elif user_input == "/voice":
             voice_info = """
 ### 🎙️ Integración con Asistente de Voz Local (Hands-Free Coding)
@@ -344,6 +372,7 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
 - **/status**: Muestra el estado de archivos en Git y telemetría de tokens en VRAM.
 - **/undo**: Revierte al último checkpoint seguro en 1 segundo.
 - **/checkpoint [mensaje]**: Guarda un punto de restauración seguro con Git.
+- **/plan [objetivo]**: Diseña y visualiza artefactos de planes arquitectónicos con casillas interactivas en .aether/plans/.
 - **/model <nombre>**: Cambia el modelo de Ollama en caliente (ej: `/model qwen2.5-coder:7b`).
 - **/mode [agent|ask|plan]**: Cambia el modo operativo (Agent: autónomo total, Ask: solo lectura, Plan: planificación).
 - **/voice**: Guía de conexión con el Asistente de Voz Local en tiempo real.

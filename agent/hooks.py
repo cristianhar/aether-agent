@@ -28,6 +28,16 @@ class HookManager:
             if tool_name in forbidden_in_ask:
                 return False, f"Herramienta '{tool_name}' bloqueada: El agente está en modo 'ASK' (Solo Lectura)."
 
+        # Restricciones en modo PLAN (Planificación Arquitectónica)
+        if self.mode == "plan":
+            forbidden_in_plan = {"edit_file", "delete_file", "move_file", "run_command", "create_checkpoint", "undo_checkpoint"}
+            if tool_name in forbidden_in_plan:
+                return False, f"Herramienta '{tool_name}' bloqueada: El agente está en modo 'PLAN' (Planificación Arquitectónica). Solo se permite inspeccionar código y estructurar el plan con 'update_plan'."
+            if tool_name == "write_file":
+                dest = str(args.get("path", "")).replace("\\", "/")
+                if not (".aether/plans" in dest or ".aether" in dest or "plans" in dest):
+                    return False, "Herramienta 'write_file' bloqueada en modo 'PLAN' para archivos de código fuente. Utiliza 'update_plan' para definir el plan de arquitectura antes de implementar."
+
         # Validación de seguridad en comandos de terminal
         if tool_name == "run_command":
             cmd = args.get("command", "")

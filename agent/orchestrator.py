@@ -30,7 +30,7 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
         "read_file", "search_codebase", "list_directory", "get_file_outline",
         "get_repo_map", "get_diagnostics", "get_process_status",
         "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
-        "list_mcp_tools", "delegate_research"
+        "list_mcp_tools", "delegate_research", "get_plan"
     ]:
         category = ToolCategory.FILESYSTEM if name in ["read_file", "search_codebase", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
