@@ -253,7 +253,8 @@ def edit_file(path: str, target: str, replacement: str) -> str:
     if count > 1:
         return (
             f"Error: El texto 'target' aparece {count} veces en '{path}'. "
-            "Incluye más líneas de contexto circundante para identificar únicamente el bloque a modificar."
+            "Incluye más líneas de contexto circundante para identificar únicamente el bloque a modificar, "
+            f"o si el archivo es pequeño reescríbelo completamente usando 'write_file(path=\"{path}\", content=...)'."
         )
 
     hash_before = calculate_file_hash(file_path)

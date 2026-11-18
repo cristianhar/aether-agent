@@ -75,6 +75,7 @@ FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - UBICACIÓN EXACTA DE ARCHIVOS: Crea los archivos directamente en el directorio actual (ej: './minijuego.py' o 'minijuego.py'). NUNCA crees carpetas intermedias arbitrarias como 'src/' a menos que el usuario lo solicite expresamente.
 - ORDEN DE CREACIÓN: Si la tarea requiere crear código y pruebas, primero crea el archivo fuente con 'write_file', luego crea el archivo de pruebas con 'write_file', y solo entonces ejecuta las pruebas con 'run_command'. NUNCA ejecutes pruebas sobre un archivo de tests antes de haberlo creado físicamente en disco.
 - CÓDIGO EXISTENTE Y SUITES DE PRUEBAS: Si el usuario te pide crear pruebas para un archivo existente, NO alteres la lógica interna del archivo fuente original a menos que se te pida explícitamente depurarlo o refactorizarlo. Tus tests deben verificar y adaptarse al comportamiento del código fuente existente.
+- IMPORTACIÓN DE TIPOS: Si usas anotaciones como 'Optional', 'Union', 'Any', 'Dict', 'List', 'Tuple' o 'Callable', incluye SIEMPRE 'from typing import Any, Callable, Dict, List, Optional, Tuple, Union' en la cabecera del archivo para prevenir NameError.
 - PROYECTOS VITE: En proyectos de Vite, 'index.html' DEBE residir en la RAÍZ ('./index.html'), NUNCA dentro de 'src/index.html'.
 
 FASE 4: BUCLE DE AUTO-SANACIÓN Y VERIFICACIÓN (Self-Healing Loop)

@@ -120,6 +120,23 @@ class HookManager:
                     "• Para verificar scripts que esperan teclado, ejecuta: run_command(command='python -m py_compile <archivo>.py') o 'python -c \"import <modulo>\"'.\n"
                     "• NUNCA busques 'EOFError' dentro del archivo con edit_file; EOFError es un mensaje de la consola, no código fuente."
                 )
+            elif "NameError" in result:
+                import re
+                name_match = re.search(r"NameError:\s+name\s+'([^']+)'\s+is not defined", result)
+                missing_name = f" '{name_match.group(1)}'" if name_match else ""
+                result += (
+                    f"\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - NOMBRE NO DEFINIDO]:\n"
+                    f"• El código falló porque{missing_name} no está importado ni definido.\n"
+                    "• Si es un tipo de anotación (ej: Optional, Union, Any, Dict, List, Tuple, Callable), añade al inicio del archivo:\n"
+                    "  'from typing import Any, Callable, Dict, List, Optional, Tuple, Union'\n"
+                    "• Reescribe el archivo usando 'write_file' con las importaciones necesarias y vuelve a probar."
+                )
+            elif "ModuleNotFoundError" in result or "ImportError" in result:
+                result += (
+                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - ERROR DE IMPORTACIÓN]:\n"
+                    "• Verifica que los nombres de los módulos y funciones coincidan con los archivos existentes.\n"
+                    "• Si creaste un archivo nuevo, asegúrate de que esté en la raíz actual y se importe correctamente."
+                )
             elif "TypeError" in result or "AssertionError" in result:
                 result += (
                     "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO]: La prueba falló en la verificación de tipos o aserción.\n"
