@@ -471,7 +471,24 @@ class AgentOrchestrator:
                     cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
                     if cycle:
                         period, pattern = cycle
-                        if not files_modified_since_cmd_fail or (period == 1 and action_history and action_history[-1] == current_signature):
+                        # Condición de bloqueo para ciclo periódico:
+                        # 1. Herramienta de ejecución/test (run_command, run_tests) repitiéndose sin mutación en disco
+                        # 2. Periodo 1: repetición inmediata de la misma herramienta con los mismos argumentos
+                        # 3. Periodo >= 2: permitir hasta 3 ciclos completos para depuración/TDD antes de bloquear
+                        is_test_cmd_without_changes = (tool_name in ["run_command", "run_tests"] and not files_modified_since_cmd_fail)
+                        is_immediate_repeat = (period == 1 and action_history and action_history[-1] == current_signature)
+
+                        pattern_repeats = 0
+                        req_len = period
+                        if action_history and len(action_history) >= req_len:
+                            for k in range(len(action_history) - req_len, -1, -req_len):
+                                if action_history[k:k+req_len] == pattern:
+                                    pattern_repeats += 1
+                                else:
+                                    break
+
+                        should_block_cycle = is_test_cmd_without_changes or is_immediate_repeat or (pattern_repeats >= 2)
+                        if should_block_cycle:
                             cycle_str = " ➔ ".join(pattern)
                             if tool_name in ["run_command", "run_tests"]:
                                 if last_test_exit_code == 0:
