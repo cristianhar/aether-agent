@@ -409,7 +409,9 @@ class AgentOrchestrator:
                             )
                         else:
                             cycle_hint = (
-                                f"• El archivo ya fue creado o guardado. Procede AHORA al siguiente paso: corre las pruebas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                "• El archivo fuente ya fue creado o guardado. Si aún no has creado el archivo de pruebas ('test_*.py'), "
+                                "tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear el archivo de pruebas con las aserciones requeridas.\n"
+                                "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
                                 f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
                             )
                         msg = (
