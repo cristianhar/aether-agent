@@ -55,3 +55,39 @@ def test_execute_tools_parallel():
     assert len(results) == 2
     assert "main.py" in results[0]
     assert "main.py" in results[1]
+
+
+def test_delegate_research_read_only_restriction(monkeypatch):
+    from tools.subagent import delegate_research
+    called_mode = None
+
+    class MockOrchestrator:
+        def __init__(self, **kwargs):
+            self.hooks = kwargs.get("hooks")
+
+        def run_turn(self, prompt):
+            nonlocal called_mode
+            called_mode = getattr(self.hooks, "mode", None)
+            return "Hallazgo: la función se encuentra en core.py:10"
+
+    monkeypatch.setattr("agent.orchestrator.AgentOrchestrator", MockOrchestrator)
+    res = delegate_research("¿Dónde está la función?")
+    assert "INFORME DEL SUBAGENTE RESEARCHER" in res
+    assert "core.py:10" in res
+    assert called_mode == "ask"
+
+
+def test_delegate_test_dispatch(monkeypatch):
+    from tools.subagent import delegate_test
+
+    class MockOrchestrator:
+        def __init__(self, **kwargs):
+            pass
+
+        def run_turn(self, prompt):
+            return "Todos los tests pasaron exitosamente (Exit code 0)"
+
+    monkeypatch.setattr("agent.orchestrator.AgentOrchestrator", MockOrchestrator)
+    res = delegate_test("pytest", "tests/test_agent_tools.py")
+    assert "INFORME DEL SUBAGENTE TESTER" in res
+    assert "Exit code 0" in res

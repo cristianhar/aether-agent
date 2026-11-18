@@ -11,7 +11,7 @@ from tools.git_tools import create_checkpoint, get_git_diff, get_git_status, und
 from tools.repomap import generate_repo_map
 from tools.search_tools import list_directory, search_codebase, get_file_outline
 from tools.shell_tools import run_command
-from tools.subagent import delegate_task
+from tools.subagent import delegate_task, delegate_research, delegate_test
 from tools.web_tools import search_web, fetch_web_page
 from tools.diagnostics import get_diagnostics
 from tools.patch_engine import PatchEngine
@@ -287,6 +287,47 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                     }
                 },
                 "required": ["task_description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_research",
+            "description": "[SUBAGENTE RESEARCHER ANTIGRAVITY] Delega una investigación o análisis de código a un subagente especializado en modo de SOLO LECTURA. No tiene permisos de escritura ni mutación en disco.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Pregunta técnica o aspecto del código a investigar."
+                    },
+                    "target_dir": {
+                        "type": "string",
+                        "description": "Directorio objetivo (por defecto '.')."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_test",
+            "description": "[SUBAGENTE TESTER] Delega la ejecución y diagnóstico de una suite de pruebas a un subagente especializado de auditoría.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "test_command": {
+                        "type": "string",
+                        "description": "Comando de testing (por defecto 'pytest')."
+                    },
+                    "target_file": {
+                        "type": "string",
+                        "description": "Archivo de prueba específico a auditar."
+                    }
+                }
             }
         }
     },
@@ -753,6 +794,8 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "get_file_outline": get_file_outline,
     "get_repo_map": generate_repo_map,
     "delegate_task": delegate_task,
+    "delegate_research": delegate_research,
+    "delegate_test": delegate_test,
     "search_web": search_web,
     "fetch_web_page": fetch_web_page,
     "create_checkpoint": create_checkpoint,
