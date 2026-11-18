@@ -287,6 +287,25 @@ def test_circuit_breaker_blocks_multi_tool_ping_pong():
     assert "run_command" in msg
 
 
+def test_circuit_breaker_allows_switching_files_in_multi_tool_ping_pong():
+    """Si el agente cambia de archivo a modificar (ej: pasa de servicio a test), no debe bloquearse por bucle alternante."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    recent_tools = ["run_command", "edit_file", "run_command"]
+    action_history = ["run_command:pytest", "edit_file:payroll.py", "run_command:pytest"]
+
+    # El agente intenta editar test_payroll.py (un archivo diferente a payroll.py)
+    blocked, _ = orchestrator._check_circuit_breaker(
+        tool_name="edit_file",
+        args={"path": "test_payroll.py", "target": "assert foo", "replacement": "assert bar"},
+        recent_failed_tools=recent_tools,
+        consecutive_tool_failures=3,
+        action_history=action_history
+    )
+    assert blocked is False
+
+
 def test_circuit_breaker_blocks_repeated_edits():
     """El circuit breaker debe bloquear ediciones idénticas sobre el mismo target en el mismo turno."""
     from agent.orchestrator import AgentOrchestrator

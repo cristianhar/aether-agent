@@ -420,12 +420,22 @@ class AgentOrchestrator:
             w = recent_failed_tools[-3:] + [tool_name]
             # Patrón A-B-A-B
             if w[0] == w[2] and w[1] == w[3] and w[0] != w[1]:
-                msg = (
-                    f"⛔ [CIRCUIT BREAKER - BUCLE ALTERNANTE DETECTADO]: Has entrado en un bucle repetitivo alternando entre '{w[0]}' y '{w[1]}'.\n"
-                    f"Ambas herramientas están fallando sucesivamente porque no has modificado la causa real del problema.\n"
-                    f"• ACCIÓN OBLIGATORIA: Detén la alternancia. Si necesitas corregir un archivo, usa 'write_file' para reescribirlo completamente con la solución correcta o inspecciónalo primero con 'read_file'."
-                )
-                return True, msg
+                # Si la herramienta es edit_file pero está intentando modificar un archivo diferente al fallido, no bloquear
+                last_edit_path = None
+                for t in reversed(action_history or []):
+                    if t.startswith("edit_file:"):
+                        last_edit_path = t[len("edit_file:"):].strip()
+                        break
+                current_path = str(args.get("path") or "").strip()
+                is_switching_file = bool(last_edit_path and current_path and Path(last_edit_path).name != Path(current_path).name)
+
+                if not is_switching_file:
+                    msg = (
+                        f"⛔ [CIRCUIT BREAKER - BUCLE ALTERNANTE DETECTADO]: Has entrado en un bucle repetitivo alternando entre '{w[0]}' y '{w[1]}'.\n"
+                        f"Ambas herramientas están fallando sucesivamente porque no has modificado la causa real del problema.\n"
+                        f"• ACCIÓN OBLIGATORIA: Detén la alternancia. Si necesitas corregir un archivo, usa 'write_file' para reescribirlo completamente con la solución correcta o inspecciónalo primero con 'read_file'."
+                    )
+                    return True, msg
 
         # Regla 6: Bloqueo de ediciones repetidas con argumentos idénticos
         if tool_name in ("edit_file", "apply_patch") and executed_edits:
