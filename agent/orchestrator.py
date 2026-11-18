@@ -781,7 +781,8 @@ class AgentOrchestrator:
                 if thought_text:
                     self.on_thought(thought_text)
                 elif content and not self.on_token:
-                    clean_thought = re.sub(r"```(?:json)?\s*\{[\s\S]*?\}\s*```", "", content).strip()
+                    clean_thought = re.sub(r"```[\s\S]*?```", "", content).strip()
+                    clean_thought = re.sub(r"\{[\s\S]*?\"(?:name|arguments|function)\"[\s\S]*?\}", "", clean_thought).strip()
                     if clean_thought.startswith("{") and clean_thought.endswith("}"):
                         clean_thought = ""
                     if clean_thought:
