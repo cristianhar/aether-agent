@@ -637,6 +637,31 @@ class AgentOrchestrator:
                     thought_text = thought_match.group(1).strip()
                     content = re.sub(r"<thought>[\s\S]*?</thought>", "", content, flags=re.IGNORECASE).strip()
 
+            # Auto-materialización de bloques de código markdown con encabezado de archivo (# archivo.py / // archivo.js)
+            # Permite capturar código escrito en markdown cuando el modelo olvidó emitir la llamada formal a write_file
+            if content:
+                code_blocks = re.findall(
+                    r"```(?:[a-zA-Z0-9_\-]+)?\s*\n(?:#|//)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)\s*\n([\s\S]*?)```",
+                    content,
+                )
+                for file_name, file_code in code_blocks:
+                    f_clean = file_name.strip()
+                    already_writing = any(
+                        tc.get("function", {}).get("name") == "write_file"
+                        and tc.get("function", {}).get("arguments", {}).get("path") == f_clean
+                        for tc in tool_calls
+                    )
+                    if not already_writing:
+                        tool_calls.insert(0, {
+                            "function": {
+                                "name": "write_file",
+                                "arguments": {
+                                    "path": f_clean,
+                                    "content": file_code.strip()
+                                }
+                            }
+                        })
+
             # Fallback inteligente
             if not tool_calls and content:
                 extracted = self._extract_tool_calls_from_content(content)

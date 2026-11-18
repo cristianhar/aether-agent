@@ -148,6 +148,12 @@ class HookManager:
                     f"• ACCIÓN OBLIGATORIA: Debes crear{missing_info} inmediatamente usando 'write_file' con la implementación completa solicitada.\n"
                     "• NUNCA elimines las pruebas ni las reemplaces con aserciones triviales como 'assertEqual(1+1, 2)'. Crea el código fuente faltante."
                 )
+            elif "collected 0 items" in result or "no tests ran" in result:
+                result += (
+                    "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - NO SE ENCONTRARON PRUEBAS]:\n"
+                    "• Pytest no encontró ningún archivo de pruebas en el espacio de trabajo (collected 0 items).\n"
+                    "• ACCIÓN OBLIGATORIA: Debes crear físicamente el archivo fuente y el archivo de pruebas (ej: 'test_<modulo>.py') usando 'write_file' antes de correr pytest."
+                )
             elif "TypeError" in result:
                 result += (
                     "\n[HOOK POST-TOOL]: 💡 [DIAGNÓSTICO AUTOMÁTICO - ERROR DE TIPOS]:\n"
