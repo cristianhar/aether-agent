@@ -263,6 +263,7 @@ class AgentOrchestrator:
         consecutive_edit_failures: int = 0,
         recent_failed_tools: Optional[list] = None,
         consecutive_tool_failures: int = 0,
+        executed_edits: Optional[set] = None,
     ) -> Tuple[bool, str]:
         """
         Circuit Breaker Anti-Bucle:
@@ -272,6 +273,7 @@ class AgentOrchestrator:
         3. Llama repetidamente a la misma herramienta con argumentos idénticos inmediatamente después de haber fallado.
         4. Alterna a ciegas entre herramientas de edición sin leer el código real.
         5. Cae en un bucle alternante oscilante (ping-pong) entre dos herramientas diferentes.
+        6. Repite exactamente la misma edición que no produjo cambios o no resolvió el fallo.
         """
         tool_call_key = f"{tool_name}:{json.dumps(args, sort_keys=True)}"
 
@@ -349,6 +351,17 @@ class AgentOrchestrator:
                 )
                 return True, msg
 
+        # Regla 6: Bloqueo de ediciones repetidas con argumentos idénticos
+        if tool_name in ("edit_file", "apply_patch") and executed_edits:
+            edit_key = f"{args.get('path')}:{args.get('target', '')}"
+            if edit_key in executed_edits:
+                msg = (
+                    f"⛔ [CIRCUIT BREAKER - EDICIÓN REPETIDA BLOQUEADA]: Ya intentaste exactamente esta misma edición con 'target' en '{args.get('path')}'.\n"
+                    "Esa edición previa no produjo el resultado esperado o no resolvió el error.\n"
+                    f"• ACCIÓN OBLIGATORIA: Aplica una edición diferente, o reescribe el archivo completamente usando 'write_file(path=\"{args.get('path')}\", content=...)'."
+                )
+                return True, msg
+
         return False, ""
 
     def run_turn(self, user_prompt: str, cancellation_token: Optional[CancellationToken] = None) -> str:
@@ -378,6 +391,7 @@ class AgentOrchestrator:
         consecutive_edit_failures: int = 0
         consecutive_tool_failures: int = 0
         recent_failed_tools: list = []
+        executed_edits: set = set()
 
         for iteration in range(1, self.max_iterations + 1):
             # Seguridad: Detener bucles improductivos si hay demasiados fallos consecutivos sin ningún éxito
@@ -569,6 +583,7 @@ class AgentOrchestrator:
                     consecutive_edit_failures=consecutive_edit_failures,
                     recent_failed_tools=recent_failed_tools,
                     consecutive_tool_failures=consecutive_tool_failures,
+                    executed_edits=executed_edits,
                 )
                 if breaker_tripped:
                     total_tool_failures += 1
@@ -604,6 +619,11 @@ class AgentOrchestrator:
                 if tool_name in ["write_file", "edit_file", "apply_patch"]:
                     target_path = args.get("path")
                     has_syntax_err = ("SyntaxError" in tool_result) or ("error de sintaxis" in tool_result.lower())
+                    if tool_name in ["edit_file", "apply_patch"]:
+                        executed_edits.add(f"{target_path}:{args.get('target', '')}")
+                    elif tool_name == "write_file" and is_success:
+                        executed_edits.clear()
+
                     if is_success and not has_syntax_err:
                         files_modified_since_cmd_fail = True
                         failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
@@ -643,10 +663,17 @@ class AgentOrchestrator:
                                     known_syntax_error_files.add(part)
                                     known_syntax_error_files.add(Path(part).name)
 
-                        # Detección de bucles de aserción persistente (AssertionError idéntico repetido)
+                        # Detección de bucles de aserción o fallos persistentes en tests
+                        err_line = None
                         assert_match = re.search(r"(AssertionError:[^\n\r]+)", tool_result)
                         if assert_match:
                             err_line = assert_match.group(1).strip()
+                        else:
+                            failed_test_m = re.search(r"(FAILED\s+[^\n\r]+)", tool_result)
+                            if failed_test_m:
+                                err_line = failed_test_m.group(1).strip()
+
+                        if err_line:
                             if last_assertion_error and err_line == last_assertion_error:
                                 assertion_error_repeat_count += 1
                             else:
@@ -655,12 +682,12 @@ class AgentOrchestrator:
 
                             if assertion_error_repeat_count >= 2:
                                 tool_result += (
-                                    f"\n🚨 [CIRCUIT BREAKER - ASERCIÓN PERSISTENTE ({assertion_error_repeat_count} veces)]:\n"
+                                    f"\n🚨 [CIRCUIT BREAKER - FALLO PERSISTENTE EN TEST ({assertion_error_repeat_count} veces)]:\n"
                                     f"La prueba sigue fallando con el mismo error: '{err_line}'.\n"
-                                    "Tus modificaciones previas NO están resolviendo el fallo.\n"
-                                    "• Si el error compara dos números (ej: X != Y), el primer número (X) es el valor REAL generado por Python.\n"
-                                    "• ACCIÓN OBLIGATORIA: Abre el archivo de pruebas ('test_...py') y cambia el valor esperado por el valor real de Python.\n"
-                                    "• Si usas unittest, usa self.assertAlmostEqual(actual, esperado, places=2). NUNCA uses pytest.approx dentro de unittest."
+                                    "Tus modificaciones previas NO están resolviendo el fallo o no produjeron cambios efectivos en disco.\n"
+                                    "• Si es un test con corrutinas async, convierte la función a síncrona 'def' usando 'asyncio.run()'.\n"
+                                    "• Si el error compara dos números (ej: X != Y), el primer número (X) es el valor REAL de Python.\n"
+                                    "• ACCIÓN OBLIGATORIA: Abre el archivo y reescríbelo completamente usando 'write_file' con el código correcto."
                                 )
                     else:
                         failed_commands.discard(cmd_norm)

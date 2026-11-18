@@ -284,3 +284,18 @@ def test_circuit_breaker_blocks_multi_tool_ping_pong():
     assert "CIRCUIT BREAKER - BUCLE ALTERNANTE DETECTADO" in msg
     assert "edit_file" in msg
     assert "run_command" in msg
+
+
+def test_circuit_breaker_blocks_repeated_edits():
+    """El circuit breaker debe bloquear ediciones idénticas sobre el mismo target en el mismo turno."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    executed_edits = {"app.py:def foo():"}
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="edit_file",
+        args={"path": "app.py", "target": "def foo():", "replacement": "def bar():"},
+        executed_edits=executed_edits
+    )
+    assert blocked is True
+    assert "EDICIÓN REPETIDA BLOQUEADA" in msg

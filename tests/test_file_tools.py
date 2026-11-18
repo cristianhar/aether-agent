@@ -69,3 +69,12 @@ def test_edit_file_empty_target_rejected(tmp_path):
     assert "write_file" in res
 
 
+def test_edit_file_noop_rejected(tmp_path):
+    f = tmp_path / "module2.py"
+    f.write_text("x = 10\n", encoding="utf-8")
+
+    res = edit_file(str(f), target="x = 10", replacement="x = 10")
+    assert "Error / Sin cambios" in res
+    assert "IDÉNTICO" in res
+
+

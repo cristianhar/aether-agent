@@ -116,6 +116,19 @@ def _generate_shell_diagnostics(command: str, work_dir: Path, exit_code: int, st
             f"• Si '{missing_var}' es un módulo estándar de Python (ej: time, math, os, sys, json, random, re), agrega 'import {missing_var}' al principio de ese archivo."
         )
 
+    # 7. Detección de pruebas asíncronas no soportadas en pytest (async def sin plugin)
+    if "async def functions are not natively supported" in combined or "unknown pytest.mark.asyncio" in combined:
+        hints.append(
+            "🚨 [DIAGNÓSTICO DE TEST ASÍNCRONO EN PYTEST]:\n"
+            "• Pytest no soporta 'async def test_...()' de forma nativa sin el plugin 'pytest-asyncio'.\n"
+            "• ACCIÓN OBLIGATORIA: Convierte la función de prueba en una función síncrona normal 'def test_...()' "
+            "y ejecuta la corrutina usando 'asyncio.run()':\n"
+            "  def test_mi_corrutina():\n"
+            "      resultado = asyncio.run(mi_corrutina())\n"
+            "      assert resultado == ...\n"
+            "• Elimina el decorador '@pytest.mark.asyncio'."
+        )
+
     # 3. Detección de archivo Python inexistente en CWD pero existente en subcarpeta
     if ("can't open file" in combined or "no such file" in combined) and "python" in command.lower():
         try:

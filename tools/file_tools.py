@@ -204,7 +204,20 @@ def edit_file(path: str, target: str, replacement: str) -> str:
             "Incluye más líneas de contexto circundante para identificar únicamente el bloque a modificar."
         )
 
+    if target_normalized == replacement_normalized:
+        return (
+            f"Error / Sin cambios: El bloque 'replacement' es IDÉNTICO al bloque 'target'. "
+            f"No se realizó ninguna modificación en el archivo '{path}'. "
+            "Debes proporcionar un código nuevo que realmente corrija el error existente."
+        )
+
     new_content = content_normalized.replace(target_normalized, replacement_normalized, 1)
+
+    if new_content == content_normalized:
+        return (
+            f"Error / Sin cambios: La sustitución no produjo ningún cambio efectivo en el archivo '{path}'. "
+            "Revisa el bloque 'target' e intenta con una edición diferente o usa 'write_file'."
+        )
 
     if "\r\n" in content:
         new_content = new_content.replace("\n", "\r\n")

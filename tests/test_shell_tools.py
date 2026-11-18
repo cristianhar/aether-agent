@@ -51,3 +51,17 @@ def test_name_error_diagnostic():
     assert "test_calc.py" in hints
     assert "import time" in hints
 
+
+def test_async_test_diagnostic():
+    from tools.shell_tools import _generate_shell_diagnostics
+    from pathlib import Path
+
+    stdout = """
+    FAILED test_app.py::test_async - Failed: async def functions are not natively supported.
+    PytestUnknownMarkWarning: Unknown pytest.mark.asyncio
+    """
+    hints = _generate_shell_diagnostics("pytest test_app.py", Path.cwd(), 1, stdout, "")
+    assert hints is not None
+    assert "DIAGNÓSTICO DE TEST ASÍNCRONO EN PYTEST" in hints
+    assert "asyncio.run()" in hints
+
