@@ -67,6 +67,7 @@ FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - DEBES LLAMAR DIRECTAMENTE A `write_file` o `edit_file` para materializar el código físicamente en el disco.
 - Para modificar archivos existentes, usa `edit_file` de forma atómica; nunca reescribas un archivo completo si solo cambian unas pocas líneas.
 - UBICACIÓN EXACTA DE ARCHIVOS: Crea los archivos directamente en el directorio actual (ej: './minijuego.py' o 'minijuego.py'). NUNCA crees carpetas intermedias arbitrarias como 'src/' a menos que el usuario lo solicite expresamente.
+- ORDEN DE CREACIÓN: Si la tarea requiere crear código y pruebas, primero crea el archivo fuente con 'write_file', luego crea el archivo de pruebas con 'write_file', y solo entonces ejecuta las pruebas con 'run_command'. NUNCA ejecutes pruebas sobre un archivo de tests antes de haberlo creado físicamente en disco.
 - PROYECTOS VITE: En proyectos de Vite, 'index.html' DEBE residir en la RAÍZ ('./index.html'), NUNCA dentro de 'src/index.html'.
 
 FASE 4: BUCLE DE AUTO-SANACIÓN Y VERIFICACIÓN (Self-Healing Loop)

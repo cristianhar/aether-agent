@@ -37,7 +37,11 @@ def read_file(path: str, start_line: int = 1, end_line: int = 200) -> str:
     """
     file_path = get_absolute_path(path)
     if not file_path.exists():
-        return f"Error: El archivo '{path}' no existe en la ruta {file_path}."
+        return (
+            f"Error: El archivo '{path}' no existe en la ruta {file_path}.\n"
+            f"• Si deseas CREAR este archivo, debes usar 'write_file(path=\"{path}\", content=...)'.\n"
+            f"• Si deseas ver qué archivos existen en esta carpeta, usa 'list_directory'."
+        )
     if file_path.is_dir():
         return f"Error: '{path}' es un directorio, no un archivo de texto."
 
@@ -183,7 +187,11 @@ def edit_file(path: str, target: str, replacement: str) -> str:
     """
     file_path = get_absolute_path(path)
     if not file_path.exists():
-        return f"Error: El archivo '{path}' no existe."
+        return (
+            f"Error: El archivo '{path}' no existe físicamente en el disco.\n"
+            f"• La herramienta 'edit_file' solo puede modificar archivos existentes.\n"
+            f"• ACCIÓN OBLIGATORIA: Para CREAR este archivo por primera vez, debes llamar a 'write_file(path=\"{path}\", content=...)'."
+        )
     if file_path.is_dir():
         return f"Error: '{path}' es un directorio."
 

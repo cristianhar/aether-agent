@@ -141,3 +141,10 @@ def test_edit_file_noop_guidance(tmp_path):
     assert "AssertionError" in res
 
 
+def test_edit_file_on_nonexistent_file_guides_write_file(tmp_path):
+    """Verifica que intentar editar un archivo inexistente guíe al modelo a crearlo con write_file."""
+    res = edit_file(str(tmp_path / "nonexistent.py"), target="foo", replacement="bar")
+    assert "no existe" in res
+    assert "write_file" in res
+
+
