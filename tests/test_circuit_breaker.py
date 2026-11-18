@@ -506,5 +506,41 @@ def test_circuit_breaker_blocks_generic_hallucinated_filenames():
     assert "test_module.py" in msg
 
 
+def test_circuit_breaker_blocks_premature_plan_completion_on_test_failure():
+    """Verifica que update_plan con is_completed=True sea bloqueado si las pruebas fallaron."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="update_plan",
+        args={"is_completed": True},
+        last_test_exit_code=1,
+        last_test_failure_summary="AssertionError: assert 1 == 2"
+    )
+    assert blocked is True
+    assert "COMPLETITUD PREMATURA BLOQUEADA" in msg
+    assert "falló (Exit Code 1)" in msg
+
+
+def test_circuit_breaker_allows_write_file_mutation_when_content_changes(tmp_path, monkeypatch):
+    """Verifica que sobreescribir un archivo con contenido nuevo NO sea bloqueado falsamente como ciclo."""
+    from agent.orchestrator import AgentOrchestrator
+    monkeypatch.chdir(tmp_path)
+    test_f = tmp_path / "calc.py"
+    test_f.write_text("def hello(): pass\n", encoding="utf-8")
+
+    orchestrator = AgentOrchestrator(model="dummy-model")
+    # action_history simula que acabamos de llamar a write_file con calc.py
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="write_file",
+        args={"path": "calc.py", "content": "def hello(): return 'world'\n"},
+        action_history=["write_file:calc.py"],
+        files_modified_since_cmd_fail=False
+    )
+    assert blocked is False
+    assert msg == ""
+
+
+
 
 

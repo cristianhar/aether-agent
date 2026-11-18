@@ -30,7 +30,7 @@ Cuando termines, devuelve un resumen ejecutivo de tus hallazgos o el resultado d
     # Crear una instancia aislada del orquestador que usa el mismo modelo Ollama
     sub_orchestrator = AgentOrchestrator(
         system_prompt=subagent_prompt,
-        max_iterations=6
+        max_iterations=12
     )
 
     try:

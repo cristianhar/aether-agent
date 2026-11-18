@@ -450,72 +450,88 @@ class AgentOrchestrator:
                 )
             )
             if not is_fixing_syntax:
-                current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
-                candidate_history = list(action_history) + [current_signature]
-                cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
-                if cycle:
-                    period, pattern = cycle
-                    if not files_modified_since_cmd_fail or (period == 1 and action_history and action_history[-1] == current_signature):
-                        cycle_str = " ➔ ".join(pattern)
-                        if tool_name in ["run_command", "run_tests"]:
-                            if last_test_exit_code == 0:
-                                cycle_hint = (
-                                    "• Las pruebas ya pasaron exitosamente (Exit code 0): tu verificación ha CONCLUIDO CON ÉXITO. "
-                                    "NO vuelvas a ejecutar el comando. Concluye el turno e informa al usuario en tu respuesta final."
-                                )
-                            elif last_test_exit_code is not None and last_test_exit_code != 0:
-                                failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
-                                cycle_hint = (
-                                    "• Las pruebas FALLARON (Exit code != 0). NO puedes dar la tarea por concluida ni repetir el comando sin cambios.\n"
-                                    f"{failure_detail}"
-                                    "• ACCIÓN OBLIGATORIA: Analiza el Traceback o fallo reportado y modifica el código fuente o el archivo de pruebas usando 'write_file' o 'edit_file'."
-                                )
-                            else:
-                                cycle_hint = (
-                                    "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
-                                    "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
-                                )
+                # Si es write_file, verificar si es una mutación genuina (contenido diferente al del disco)
+                is_genuine_mutation = False
+                if tool_name == "write_file" and target_path_str:
+                    try:
+                        p_disk = Path(target_path_str).resolve()
+                        new_c = str(args.get("content", ""))
+                        if p_disk.is_file():
+                            curr_c = p_disk.read_text(encoding="utf-8", errors="replace")
+                            if curr_c.strip() != new_c.strip():
+                                is_genuine_mutation = True
                         else:
-                            target_file_obj = Path(target_path_str) if target_path_str else None
-                            if target_file_obj and target_file_obj.suffix == ".py":
-                                t_stem = target_file_obj.stem
-                                if t_stem.startswith("test_"):
+                            is_genuine_mutation = True
+                    except Exception:
+                        pass
+
+                if not is_genuine_mutation:
+                    current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                    candidate_history = list(action_history) + [current_signature]
+                    cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
+                    if cycle:
+                        period, pattern = cycle
+                        if not files_modified_since_cmd_fail or (period == 1 and action_history and action_history[-1] == current_signature):
+                            cycle_str = " ➔ ".join(pattern)
+                            if tool_name in ["run_command", "run_tests"]:
+                                if last_test_exit_code == 0:
                                     cycle_hint = (
-                                        f"• El archivo de pruebas '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
-                                        "• Tu SIGUIENTE ACCIÓN OBLIGATORIA es ejecutar las pruebas llamando a 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
-                                        f"• NO vuelvas a escribir '{target_file_obj.name}' sin haber ejecutado las pruebas primero."
+                                        "• Las pruebas ya pasaron exitosamente (Exit code 0): tu verificación ha CONCLUIDO CON ÉXITO. "
+                                        "NO vuelvas a ejecutar el comando. Concluye el turno e informa al usuario en tu respuesta final."
+                                    )
+                                elif last_test_exit_code is not None and last_test_exit_code != 0:
+                                    failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+                                    cycle_hint = (
+                                        "• Las pruebas FALLARON (Exit code != 0). NO puedes dar la tarea por concluida ni repetir el comando sin cambios.\n"
+                                        f"{failure_detail}"
+                                        "• ACCIÓN OBLIGATORIA: Analiza el Traceback o fallo reportado y modifica el código fuente o el archivo de pruebas usando 'write_file' o 'edit_file'."
                                     )
                                 else:
-                                    expected_test_file = f"test_{t_stem}.py"
-                                    test_exists = (Path.cwd() / expected_test_file).is_file()
-                                    if test_exists:
-                                        failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+                                    cycle_hint = (
+                                        "• Si las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: NO vuelvas a ejecutar el mismo comando. Concluye el turno e informa al usuario en tu respuesta final.\n"
+                                        "• Si las pruebas fallaron, debes modificar el código fuente con 'write_file' o 'edit_file' antes de volver a ejecutarlas."
+                                    )
+                            else:
+                                target_file_obj = Path(target_path_str) if target_path_str else None
+                                if target_file_obj and target_file_obj.suffix == ".py":
+                                    t_stem = target_file_obj.stem
+                                    if t_stem.startswith("test_"):
                                         cycle_hint = (
-                                            f"• El archivo '{target_file_obj.name}' y sus pruebas '{expected_test_file}' ya existen en disco, "
-                                            "pero tus acciones consecutivas no están produciendo modificaciones efectivas.\n"
-                                            f"{failure_detail}"
-                                            f"• ACCIÓN OBLIGATORIA: Debes cambiar la lógica del código en '{target_file_obj.name}' o '{expected_test_file}' usando 'write_file' para corregir el fallo, o ejecutar 'run_tests()'."
+                                            f"• El archivo de pruebas '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
+                                            "• Tu SIGUIENTE ACCIÓN OBLIGATORIA es ejecutar las pruebas llamando a 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                            f"• NO vuelvas a escribir '{target_file_obj.name}' sin haber ejecutado las pruebas primero."
                                         )
                                     else:
-                                        cycle_hint = (
-                                            f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
-                                            f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
-                                            f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
-                                        )
-                            else:
-                                prompt_test_files = re.findall(r"['\"](test_[a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
-                                test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else f"'test_{target_file_obj.stem}.py'"
-                                cycle_hint = (
-                                    f"• El archivo ya fue creado o guardado. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
-                                    "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
-                                    f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
-                                )
-                        msg = (
-                            f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
-                            f"La acción '{current_signature}' se está repitiendo consecutivamente sin modificaciones en el disco: {cycle_str}.\n"
-                            f"{cycle_hint}"
-                        )
-                        return True, msg
+                                        expected_test_file = f"test_{t_stem}.py"
+                                        test_exists = (Path.cwd() / expected_test_file).is_file()
+                                        if test_exists:
+                                            failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+                                            cycle_hint = (
+                                                f"• El archivo '{target_file_obj.name}' y sus pruebas '{expected_test_file}' ya existen en disco, "
+                                                "pero tus acciones consecutivas no están produciendo modificaciones efectivas.\n"
+                                                f"{failure_detail}"
+                                                f"• ACCIÓN OBLIGATORIA: Debes cambiar la lógica del código en '{target_file_obj.name}' o '{expected_test_file}' usando 'write_file' para corregir el fallo, o ejecutar 'run_tests()'."
+                                            )
+                                        else:
+                                            cycle_hint = (
+                                                f"• El archivo '{target_file_obj.name}' ya fue creado y guardado en disco.\n"
+                                                f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{expected_test_file}\", content=...)' para implementar las pruebas unitarias de '{target_file_obj.name}'.\n"
+                                                f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
+                                            )
+                                else:
+                                    prompt_test_files = re.findall(r"['\"](test_[a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
+                                    test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else f"'test_{target_file_obj.stem}.py'"
+                                    cycle_hint = (
+                                        f"• El archivo ya fue creado o guardado. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
+                                        "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                        f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
+                                    )
+                            msg = (
+                                f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
+                                f"La acción '{current_signature}' se está repitiendo consecutivamente sin modificaciones en el disco: {cycle_str}.\n"
+                                f"{cycle_hint}"
+                            )
+                            return True, msg
 
         # Combinar failed_commands con last_failed_command para retrocompatibilidad
         active_failed_cmds = set(failed_commands or set())
@@ -612,6 +628,18 @@ class AgentOrchestrator:
                     f"• ACCIÓN OBLIGATORIA: Aplica una edición diferente, o reescribe el archivo completamente usando 'write_file(path=\"{args.get('path')}\", content=...)'."
                 )
                 return True, msg
+
+        # Regla 7: Bloqueo de completitud prematura del plan si las pruebas han fallado
+        if tool_name == "update_plan":
+            is_marking_completed = bool(args.get("is_completed"))
+            if is_marking_completed and last_test_exit_code is not None and last_test_exit_code != 0:
+                failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+                return True, (
+                    "⛔ [CIRCUIT BREAKER - COMPLETITUD PREMATURA BLOQUEADA]: Intentas marcar el plan como COMPLETADO, "
+                    f"pero la última ejecución de pruebas falló (Exit Code {last_test_exit_code}).\n"
+                    f"{failure_detail}"
+                    "• ACCIÓN OBLIGATORIA: No puedes completar el plan mientras las pruebas fallen. Corrige el código o los tests primero usando 'write_file' o 'edit_file', y vuelve a ejecutar 'run_tests()'."
+                )
 
         return False, ""
 
@@ -1016,6 +1044,14 @@ class AgentOrchestrator:
                     recent_failed_tools.append(tool_name)
                     last_failed_tool_key = tool_call_key
                     self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
+                    if "COMPLETION GUARD" in breaker_msg:
+                        # Si el plan ya está formalmente completado y verificado, y el modelo sigue invocando herramientas de mutación,
+                        # concluimos el turno limpiamente sin penalizar ni ciclar
+                        final_answer = content or "Tarea completada exitosamente según el plan verificado."
+                        self.memory.add_assistant_message(content=final_answer)
+                        self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
+                        self.set_state(AgentState.COMPLETED)
+                        break
                     continue
 
                 if tool_name not in [

@@ -853,21 +853,19 @@ def run_tests_tool(test_target: str = None) -> str:
                 target = base_name
             elif (Path.cwd() / "tests" / base_name).is_file():
                 target = f"tests/{base_name}"
-    if not target:
-        recent_root_tests = [
-            p for p in Path.cwd().glob("test_*.py")
-            if (time.time() - p.stat().st_mtime) < 3600
-        ]
-        if recent_root_tests:
-            recent_root_tests.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            target = " ".join(p.name for p in recent_root_tests)
+    if not target or target == ".":
+        # Buscar pruebas en raíz y en tests/, priorizando el archivo de pruebas más recientemente modificado
+        all_tests = [p for p in Path.cwd().glob("test_*.py") if p.is_file()] + [p for p in Path.cwd().glob("tests/test_*.py") if p.is_file()]
+        if all_tests:
+            all_tests.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            try:
+                target = str(all_tests[0].relative_to(Path.cwd())).replace("\\", "/")
+            except Exception:
+                target = all_tests[0].name
         else:
-            root_tests = list(Path.cwd().glob("test_*.py"))
-            if root_tests:
-                root_tests.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                target = root_tests[0].name
-            else:
-                target = "."
+            target = "."
+    elif target.lower() in ["all", "suite", "full"]:
+        target = "."
     cmd = f"pytest -v -o testpaths=. {target}"
     return run_command(cmd)
 
