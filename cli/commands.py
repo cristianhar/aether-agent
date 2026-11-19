@@ -187,10 +187,12 @@ def handle_slash_command(
     elif cmd == "/telemetry":
         tlog = TelemetryLogger()
         summary = tlog.get_summary()
-        telem_text = f"""[bold]Turnos Totales de Agente:[/] {summary['total_turns']}
-[bold]Llamadas a Herramientas:[/] {summary['total_tool_calls']}
-[bold]Fallos / Reintentos de Herramientas:[/] {summary['tool_failures']} ({summary['tool_failure_rate_percent']}%)
-[bold]Duración Promedio por Turno:[/] {summary['average_turn_duration_seconds']}s"""
+        failures = summary.get("tool_failures", 0)
+        failure_rate = summary.get("tool_failure_rate_percent", summary.get("tool_failure_rate", 0.0))
+        telem_text = f"""[bold]Turnos Totales de Agente:[/] {summary.get('total_turns', 0)}
+[bold]Llamadas a Herramientas:[/] {summary.get('total_tool_calls', 0)}
+[bold]Fallos / Reintentos de Herramientas:[/] {failures} ({failure_rate}%)
+[bold]Duración Promedio por Turno:[/] {summary.get('average_turn_duration_seconds', 0.0)}s"""
         console.print(Panel(telem_text, title="📈 Telemetría y Rendimiento de AETHER", border_style="magenta", box=box.ROUNDED))
         return True
 

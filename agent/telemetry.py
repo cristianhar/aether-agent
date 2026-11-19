@@ -6,11 +6,9 @@ y eventos de seguridad en .aether/telemetry.jsonl.
 
 from datetime import datetime
 import json
-import os
 from pathlib import Path
 import threading
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 class TelemetryLogger:
@@ -90,7 +88,9 @@ class TelemetryLogger:
             return {
                 "total_turns": 0,
                 "total_tool_calls": 0,
+                "tool_failures": 0,
                 "tool_failure_rate": 0.0,
+                "tool_failure_rate_percent": 0.0,
                 "average_turn_duration_seconds": 0.0,
             }
 
@@ -127,6 +127,7 @@ class TelemetryLogger:
             "total_turns": total_turns,
             "total_tool_calls": total_tools,
             "tool_failures": total_failures,
+            "tool_failure_rate": failure_rate,
             "tool_failure_rate_percent": failure_rate,
             "average_turn_duration_seconds": avg_duration,
         }

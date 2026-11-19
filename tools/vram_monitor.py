@@ -3,9 +3,17 @@ Monitor de Hardware y VRAM para Ollama en NVIDIA RTX 4060 (6 GB VRAM).
 Supervisa la carga de modelos, uso de memoria GPU vs CPU offload y contexto activo.
 """
 
-import os
+import socket
 import subprocess
-from typing import Any, Dict, List
+
+
+def _is_ollama_alive(host: str = "127.0.0.1", port: int = 11434, timeout: float = 0.4) -> bool:
+    """Verifica de forma ultrarrápida si el servicio de Ollama está escuchando en el puerto local."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def get_hardware_vram_status() -> str:
@@ -14,6 +22,9 @@ def get_hardware_vram_status() -> str:
     procesador asignado (100% GPU vs CPU Offload) y ventana de contexto.
     Diseñado específicamente para optimizar la GPU NVIDIA GeForce RTX 4060 de 6 GB VRAM.
     """
+    if not _is_ollama_alive():
+        return "ℹ️ Ollama no está en ejecución en el puerto 11434 (Hardware GPU en reposo)."
+
     try:
         proc = subprocess.run(
             ["ollama", "ps"],
@@ -21,7 +32,7 @@ def get_hardware_vram_status() -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=5,
+            timeout=2,
         )
         output = proc.stdout.strip()
     except FileNotFoundError:

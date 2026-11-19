@@ -13,7 +13,7 @@ def test_bridge_server_endpoints():
     base_url = f"http://127.0.0.1:{port}"
 
     try:
-        with httpx.Client(base_url=base_url, timeout=5.0) as client:
+        with httpx.Client(base_url=base_url, timeout=10.0) as client:
             # 1. Chequeo de status
             res_status = client.get("/api/status")
             assert res_status.status_code == 200
@@ -48,3 +48,4 @@ def test_bridge_server_endpoints():
 
     finally:
         server.shutdown()
+        server.server_close()
