@@ -319,6 +319,27 @@ def handle_slash_command(
         console.print("[dim]Tip: Usa '/subagents status <id>' para ver su buzón o '/subagents kill <id>' para terminarlo.[/dim]")
         return True
 
+    # Configuración de idioma (i18n)
+    elif cmd in ["/language", "/lang", "/idioma"]:
+        from agent.i18n import get_current_language, set_current_language
+        parts = user_input.split()
+        if len(parts) > 1:
+            target_lang = parts[1].lower().strip()
+            if set_current_language(target_lang):
+                active = get_current_language()
+                msg = "Language switched to English (en)." if active == "en" else "Idioma cambiado a Español (es)."
+                if hasattr(orchestrator, "set_mode"):
+                    orchestrator.set_mode(getattr(orchestrator, "mode", "agent"))
+                console.print(f"[bold green]✓ {msg}[/bold green]")
+            else:
+                console.print("[bold red]Idioma no soportado. Opciones disponibles: 'es' (Español), 'en' (English).[/bold red]")
+        else:
+            cur = get_current_language()
+            desc = "Español (es)" if cur == "es" else "English (en)"
+            console.print(f"[bold cyan]🌐 Idioma actual:[/] [bold white]{desc}[/]")
+            console.print("[dim]Usa '/language en' para inglés o '/language es' para español.[/dim]")
+        return True
+
     # Deshacer cambios al checkpoint anterior
     elif cmd == "/undo":
         res = undo_checkpoint()

@@ -3,7 +3,7 @@ Prompts del sistema para AETHER IDE — Arquitectura modular inspirada en Antigr
 Optimizado para modelos de programación locales como Qwen2.5-Coder con ejecución 100% offline.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 BASE_ENVIRONMENT = """<environment>
 - Sistema Operativo: Windows 11.
@@ -144,8 +144,15 @@ SYSTEM_PROMPTS_BY_MODE: Dict[str, str] = {
 }
 
 
-def get_system_prompt(mode: str = "agent") -> str:
-    """Retorna el prompt del sistema especializado para el modo operativo especificado."""
+def get_system_prompt(mode: str = "agent", lang: Optional[str] = None) -> str:
+    """Retorna el prompt del sistema especializado para el modo operativo e idioma especificados."""
+    try:
+        from agent.i18n import get_localized_system_prompt
+        localized = get_localized_system_prompt(mode, lang)
+        if localized:
+            return localized
+    except Exception:
+        pass
     mode_clean = (mode or "agent").lower().strip()
     return SYSTEM_PROMPTS_BY_MODE.get(mode_clean, MODE_AGENT_PROMPT)
 
