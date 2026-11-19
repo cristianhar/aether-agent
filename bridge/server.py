@@ -155,6 +155,25 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
             sessions = sm.list_sessions(limit=20)
             self._send_json({"sessions": sessions})
 
+        elif path == "/api/artifacts":
+            from agent.artifacts import ArtifactManager
+            mgr = ArtifactManager(session_id=orch.session_id)
+            artifacts = mgr.list_artifacts()
+            self._send_json({"artifacts": artifacts})
+
+        elif path == "/api/artifact":
+            art_id = params.get("id", [""])[0]
+            if not art_id:
+                self._send_json({"error": "Parámetro 'id' requerido."}, 400)
+                return
+            from agent.artifacts import ArtifactManager
+            mgr = ArtifactManager(session_id=orch.session_id)
+            try:
+                data = mgr.read_artifact(art_id)
+                self._send_json(data)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 404)
+
         else:
             self._send_json({"error": "Endpoint no encontrado."}, 404)
 

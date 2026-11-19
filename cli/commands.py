@@ -207,6 +207,49 @@ def handle_slash_command(
         console.print(Panel(telem_text, title="📈 Telemetría y Rendimiento de AETHER", border_style="magenta", box=box.ROUNDED))
         return True
 
+    # Explorador de Artefactos persistentes
+    elif cmd in ["/artifacts", "/artifact"]:
+        from agent.artifacts import ArtifactManager
+        mgr = ArtifactManager(session_id=getattr(orchestrator, "session_id", "default"))
+        args = user_input[len(user_input.split()[0]):].strip().split()
+        if args and args[0] == "read" and len(args) > 1:
+            art_id = args[1]
+            try:
+                data = mgr.read_artifact(art_id)
+                meta = data.get("metadata", {})
+                console.print(Panel(Markdown(data["content"]), title=f"[bold cyan]📄 {meta.get('title', art_id)} (v{meta.get('version', 1)})[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+            except Exception as e:
+                console.print(f"[bold red]Error leyendo artefacto:[/] {e}")
+            return True
+
+        items = mgr.list_artifacts()
+        if not items:
+            console.print("[dim]ℹ️ No hay artefactos generados en este proyecto aún.[/dim]")
+            return True
+
+        table = Table(title="📚 Catálogo de Artefactos de AETHER", box=box.ROUNDED, border_style="cyan")
+        table.add_column("ID de Artefacto", style="bold cyan")
+        table.add_column("Título", style="bold white")
+        table.add_column("Versión", justify="center", style="magenta")
+        table.add_column("User Facing", justify="center")
+        table.add_column("Feedback", justify="center")
+        table.add_column("Resumen", style="dim")
+
+        for it in items:
+            uf = "✅" if it.get("user_facing") else "❌"
+            fb = "⏳ Pendiente" if it.get("request_feedback") else "—"
+            table.add_row(
+                it.get("artifact_id", ""),
+                it.get("title", ""),
+                f"v{it.get('version', 1)}",
+                uf,
+                fb,
+                it.get("summary", "")[:50] + ("..." if len(it.get("summary", "")) > 50 else ""),
+            )
+        console.print(table)
+        console.print("[dim]Tip: Usa '/artifacts read <id>' para ver el contenido completo de un artefacto.[/dim]")
+        return True
+
     # Deshacer cambios al checkpoint anterior
     elif cmd == "/undo":
         res = undo_checkpoint()

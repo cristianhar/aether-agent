@@ -249,6 +249,7 @@ COMMANDS_META = {
     "/checkpoint": "Crea un punto de restauración Git inmediato",
     "/cancel": "Cancela la tarea o turno activo y devuelve el agente a IDLE",
     "/stop": "Detiene inmediatamente la generación o ejecución activa",
+    "/artifacts": "Explora y consulta artefactos y planes persistentes",
     "/map": "Genera el mapa estructural del repositorio",
     "/status": "Muestra el estado del agente y métricas VRAM",
     "/sessions": "Lista el historial de sesiones SQLite",

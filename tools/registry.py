@@ -28,6 +28,10 @@ from tools.agent_tools import (
     search_memory,
     list_memories,
     ask_question_tool,
+    create_artifact_tool,
+    update_artifact_tool,
+    read_artifact_tool,
+    list_artifacts_tool,
 )
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
@@ -187,6 +191,10 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "search_memory": search_memory,
     "list_memories": list_memories,
     "ask_question": ask_question_tool,
+    "create_artifact": create_artifact_tool,
+    "update_artifact": update_artifact_tool,
+    "read_artifact": read_artifact_tool,
+    "list_artifacts": list_artifacts_tool,
     "request_approval": request_approval,
     "get_project_instructions": get_project_instructions,
     "find_definition": find_definition,
@@ -393,6 +401,10 @@ PLAN_MODE_TOOL_NAMES = {
     "update_plan",
     "get_plan",
     "ask_question",
+    "create_artifact",
+    "update_artifact",
+    "read_artifact",
+    "list_artifacts",
     "search_memory",
     "list_memories",
     "get_project_instructions",

@@ -32,6 +32,11 @@ def test_bridge_server_endpoints():
             assert res_diff.status_code == 200
             assert "diff" in res_diff.json()
 
+            # 3.1 Chequeo de artefactos
+            res_arts = client.get("/api/artifacts")
+            assert res_arts.status_code == 200
+            assert "artifacts" in res_arts.json()
+
             # 4. Chequeo de cancelación segura sin tarea activa
             res_cancel = client.post("/api/cancel", json={})
             assert res_cancel.status_code == 200

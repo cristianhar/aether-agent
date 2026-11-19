@@ -45,7 +45,7 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
         category = ToolCategory.FILESYSTEM if name in ["read_file", "cat", "view_file", "search_codebase", "grep_search", "grep", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
 
-    if name in ["remember_fact", "update_plan"]:
+    if name in ["remember_fact", "update_plan", "create_artifact", "update_artifact"]:
         return ToolCategory.AGENT_MANAGEMENT, PermissionLevel.WORKSPACE_WRITE
 
     if name in ["write_file", "create_file", "new_file", "save_file", "edit_file", "delete_file", "move_file", "apply_patch"]:

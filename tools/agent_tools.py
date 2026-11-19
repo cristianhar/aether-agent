@@ -393,3 +393,84 @@ def ask_question_tool(questions: Any) -> str:
 
     return json.dumps({"status": "success", "answers": res}, ensure_ascii=False)
 
+
+def create_artifact_tool(
+    title: str,
+    content: str,
+    summary: str,
+    user_facing: bool = True,
+    request_feedback: bool = False,
+    tags: Optional[List[str]] = None,
+) -> str:
+    """Crea un documento o artefacto estructurado persistente en .aether/artifacts/."""
+    from agent.artifacts import ArtifactManager
+    mgr = ArtifactManager()
+    res = mgr.create_artifact(
+        title=title,
+        content=content,
+        summary=summary,
+        user_facing=user_facing,
+        request_feedback=request_feedback,
+        tags=tags,
+    )
+    return (
+        f"✅ Artefacto creado con éxito.\n"
+        f"• ID: {res['artifact_id']}\n"
+        f"• Título: {res['title']}\n"
+        f"• Archivo: {res['path']}\n"
+        f"• Versión: {res['version']}\n"
+        f"• UserFacing: {res['user_facing']} | RequestFeedback: {res['request_feedback']}"
+    )
+
+
+def update_artifact_tool(
+    artifact_id: str,
+    content: str,
+    summary: Optional[str] = None,
+    request_feedback: Optional[bool] = None,
+) -> str:
+    """Actualiza un artefacto existente incrementando su versión."""
+    from agent.artifacts import ArtifactManager
+    mgr = ArtifactManager()
+    try:
+        res = mgr.update_artifact(
+            artifact_id=artifact_id,
+            content=content,
+            summary=summary,
+            request_feedback=request_feedback,
+        )
+        return f"✅ Artefacto '{artifact_id}' actualizado a versión {res['version']}."
+    except Exception as e:
+        return f"❌ Error actualizando artefacto: {str(e)}"
+
+
+def read_artifact_tool(artifact_id: str) -> str:
+    """Lee el contenido completo y metadatos de un artefacto existente."""
+    from agent.artifacts import ArtifactManager
+    mgr = ArtifactManager()
+    try:
+        data = mgr.read_artifact(artifact_id)
+        meta = data.get("metadata", {})
+        return (
+            f"📄 **Artefacto: {meta.get('title', artifact_id)} (v{meta.get('version', 1)})**\n"
+            f"• Resumen: {meta.get('summary', 'Sin resumen')}\n"
+            f"• Actualizado: {meta.get('updated_at', 'N/A')}\n\n"
+            f"---\n{data['content']}"
+        )
+    except Exception as e:
+        return f"❌ Error leyendo artefacto: {str(e)}"
+
+
+def list_artifacts_tool() -> str:
+    """Lista todos los artefactos registrados en la sesión y proyecto."""
+    from agent.artifacts import ArtifactManager
+    mgr = ArtifactManager()
+    items = mgr.list_artifacts()
+    if not items:
+        return "ℹ️ No hay artefactos creados en este proyecto aún."
+    lines = [f"📚 **Artefactos Registrados ({len(items)}):**"]
+    for it in items:
+        fb = " [Feedback Solicitado]" if it.get("request_feedback") else ""
+        lines.append(f"• **{it.get('artifact_id')}** — {it.get('title')} (v{it.get('version', 1)}){fb}\n  Resumen: {it.get('summary', '')}")
+    return "\n\n".join(lines)
+

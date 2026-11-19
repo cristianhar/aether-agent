@@ -96,6 +96,112 @@ AGENTIC_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "function": {
+            "description": "Crea un artefacto o documento estructurado persistente en .aether/artifacts/ (planes de arquitectura, especificaciones, diagramas Mermaid) con metadatos JSON.",
+            "name": "create_artifact",
+            "parameters": {
+                "properties": {
+                    "content": {
+                        "description": "Contenido completo del artefacto en formato Markdown.",
+                        "type": "string"
+                    },
+                    "request_feedback": {
+                        "description": "True si el artefacto requiere revisión y autorización explícita del usuario.",
+                        "type": "boolean"
+                    },
+                    "summary": {
+                        "description": "Resumen conciso del contenido y propósito del artefacto.",
+                        "type": "string"
+                    },
+                    "tags": {
+                        "description": "Etiquetas temáticas opcionales (ej: ['architecture', 'backend']).",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "title": {
+                        "description": "Título descriptivo del artefacto.",
+                        "type": "string"
+                    },
+                    "user_facing": {
+                        "description": "True si el documento debe presentarse y ser visible para el usuario en la UI.",
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "title",
+                    "content",
+                    "summary"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
+            "description": "Actualiza el contenido o metadatos de un artefacto existente incrementando su versión.",
+            "name": "update_artifact",
+            "parameters": {
+                "properties": {
+                    "artifact_id": {
+                        "description": "Identificador único del artefacto a actualizar.",
+                        "type": "string"
+                    },
+                    "content": {
+                        "description": "Nuevo contenido Markdown del artefacto.",
+                        "type": "string"
+                    },
+                    "request_feedback": {
+                        "description": "Actualiza el flag de solicitud de feedback del usuario.",
+                        "type": "boolean"
+                    },
+                    "summary": {
+                        "description": "Nuevo resumen descriptivo del cambio o propósito.",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "artifact_id",
+                    "content"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
+            "description": "Lee el contenido Markdown y los metadatos de un artefacto persistente.",
+            "name": "read_artifact",
+            "parameters": {
+                "properties": {
+                    "artifact_id": {
+                        "description": "Identificador único del artefacto a consultar.",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "artifact_id"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
+            "description": "Lista todos los artefactos persistentes registrados en el proyecto con sus metadatos.",
+            "name": "list_artifacts",
+            "parameters": {
+                "properties": {},
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
             "description": "[GUARDAR EN MEMORIA] Almacena hechos arquitectónicos, decisiones clave o configuraciones en SQLite. NUNCA uses esta herramienta para responder preguntas ni consultar datos existentes; para consultar la memoria usa 'search_memory'.",
             "name": "remember_fact",
             "parameters": {
