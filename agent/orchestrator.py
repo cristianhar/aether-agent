@@ -119,6 +119,7 @@ class AgentOrchestrator:
         on_tool_result: Optional[Callable[[str, str], None]] = None,
         on_state_change: Optional[Callable[[AgentState], None]] = None,
         confirm_callback: Optional[Callable[[str], bool]] = None,
+        mode: str = "agent",
     ):
         self.model = model
         self.host = host.rstrip("/")
@@ -150,9 +151,11 @@ class AgentOrchestrator:
             system_prompt += "\n\n" + "\n\n".join(loaded_rules)
 
         self.loaded_rules = loaded_rules
-        self.mode = "agent"
+        self.mode = mode
         self.memory = ConversationMemory(system_prompt=system_prompt)
-        self.hooks = HookManager(mode="agent")
+        self.hooks = HookManager(mode=mode)
+        if mode != "agent":
+            self.set_mode(mode)
         self.permissions = permission_engine or PermissionEngine()
         self.session_manager = session_manager or SessionManager()
         self.telemetry = telemetry_logger or TelemetryLogger()
