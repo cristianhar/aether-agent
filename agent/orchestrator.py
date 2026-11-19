@@ -984,13 +984,20 @@ class AgentOrchestrator:
                     self.memory.add_user_message(content=inspection_hint)
                     continue
 
-                # Guardián Anti-Pasividad: Si el usuario consultó por un archivo y el modelo pide pasivamente que se lo compartan
-                passive_deflection = any(p in content.lower() for p in [
-                    "proporciones", "proporcionar", "comparte el código", "compartir el código",
-                    "pásame el código", "pasame el contenido", "no tengo acceso al archivo",
-                    "puedes compartir", "envíame el código", "enviame el código", "más detalles sobre el contenido"
+                # Guardián Anti-Pasividad: Si el usuario consultó por un archivo específico y el modelo pide pasivamente que se lo compartan
+                user_asked_for_file = any(w in prompt_lower for w in [
+                    "archivo", "archivos", "código", "codigo", "file", "files", ".py", ".js", ".ts", ".json", ".md", ".html", ".css"
+                ]) or "@" in user_prompt
+
+                passive_file_begging = any(p in content.lower() for p in [
+                    "comparte el código", "compartir el código", "comparte el archivo", "compartir el archivo",
+                    "pásame el código", "pasame el contenido", "pásame el archivo", "pasame el archivo",
+                    "no tengo acceso al archivo", "puedes compartir el código", "puedes compartir el archivo",
+                    "envíame el código", "enviame el código", "envíame el archivo", "enviame el archivo",
+                    "más detalles sobre el contenido del archivo", "proporcióname el código", "proporcioname el código",
+                    "proporcióname el archivo", "proporcioname el archivo"
                 ])
-                if not has_attached_context and passive_deflection and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                if user_asked_for_file and not has_attached_context and passive_file_begging and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
                     proactive_prompts_sent += 1
                     self.memory.add_assistant_message(content=content)
                     file_inspection_hint = (
