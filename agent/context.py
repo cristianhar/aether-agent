@@ -156,11 +156,23 @@ def resolve_at_file_mentions(
         )
 
     full_context = "\n\n".join(context_blocks)
+    is_mutation_prompt = any(k in clean_prompt.lower() for k in ["refactoriza", "modifica", "cambia", "corrige", "edita", "agrega", "implementa", "actualiza"])
+    if is_mutation_prompt:
+        context_instruction = (
+            "[INSTRUCCIÓN DE CONTEXTO]: El contenido actual del archivo está provisto arriba para tu referencia inmediata. "
+            "No necesitas leerlo con 'read_file'. Procede directamente a aplicar la modificación o refactorización solicitada usando 'edit_file' o 'write_file', "
+            "y luego ejecuta 'run_tests()' para verificar."
+        )
+    else:
+        context_instruction = (
+            "[INSTRUCCIÓN DE CONTEXTO]: El contenido y esquema estructural del archivo ya está completamente provisto arriba. "
+            "No necesitas inspeccionarlo con 'read_file' ni 'list_directory'. "
+            "Procede a responder directamente la consulta del usuario."
+        )
+
     final_prompt = (
         f"{full_context}\n\n"
-        f"[INSTRUCCIÓN DE CONTEXTO]: El contenido y esquema estructural del archivo ya está completamente provisto arriba. "
-        f"NO llames a ninguna herramienta (ni 'get_repo_map', ni 'list_directory', ni 'read_file'). "
-        f"Tu respuesta DEBE SER DIRECTAMENTE una explicación en texto técnico detallando el archivo.\n\n"
+        f"{context_instruction}\n\n"
         f"[CONSULTA DEL USUARIO]:\n{clean_prompt}"
     )
     return final_prompt, attached_files

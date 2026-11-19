@@ -286,10 +286,23 @@ def execute_tool(name: str, arguments: Any) -> str:
 
     if name == "edit_file" and "target" not in arguments:
         if "new_content" in arguments or "content" in arguments:
-            name = "write_file"
-            handler = TOOL_HANDLERS["write_file"]
-            if "new_content" in arguments:
-                arguments["content"] = arguments.pop("new_content")
+            cnt = str(arguments.get("new_content") or arguments.get("content") or "")
+            target_p = Path(str(arguments.get("path", "")))
+            is_full_rewrite = False
+            if not target_p.exists():
+                is_full_rewrite = True
+            else:
+                try:
+                    existing_len = len(target_p.read_text(encoding="utf-8", errors="replace"))
+                    if len(cnt) >= max(50, int(existing_len * 0.6)) and ("def " in cnt or "class " in cnt):
+                        is_full_rewrite = True
+                except Exception:
+                    is_full_rewrite = True
+            if is_full_rewrite:
+                name = "write_file"
+                handler = TOOL_HANDLERS["write_file"]
+                if "new_content" in arguments:
+                    arguments["content"] = arguments.pop("new_content")
 
     if "content" not in arguments:
         for c_alias in ["text", "code", "body", "new_content"]:

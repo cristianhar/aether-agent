@@ -307,6 +307,25 @@ def write_file(path: str, content: str = "") -> str:
         )
 
     file_path = get_absolute_path(path)
+
+    # Protección anti-stubs y comentarios no-Python en archivos .py
+    if file_path.suffix == ".py" and file_path.name != "__init__.py":
+        lines_non_empty = [line.strip() for line in c_clean.splitlines() if line.strip()]
+        if lines_non_empty:
+            first_line = lines_non_empty[0]
+            if first_line.startswith("//") or first_line.startswith("/*"):
+                return (
+                    f"Error: El contenido enviado para '{path}' no contiene código Python ejecutable válido. "
+                    "Debes enviar la implementación completa con sus funciones ('def')."
+                )
+            if len(lines_non_empty) <= 5 and all(
+                l.startswith(("#", "//", "/*", "*", "TODO")) or l in ["pass", "...", "<new_content>"]
+                for l in lines_non_empty
+            ):
+                return (
+                    f"Error: El contenido enviado para '{path}' no contiene código Python ejecutable válido. "
+                    "Debes enviar la implementación completa con sus funciones ('def')."
+                )
     try:
         # Normalización de strings con escapes literales (\n, \t) producidos por LLMs locales
         if r"\n" in content and "\n" not in content:

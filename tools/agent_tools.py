@@ -303,7 +303,11 @@ def remember_fact(key: str, content: str, category: str = "project") -> str:
 
     mode_info = "con vectorización semántica local" if embedding else "con coincidencia léxica determinista"
     if success:
-        return f"🧠 [MEMORIA GUARDADA]: Se registró el hecho clave '{key}' en la categoría '{category}' ({mode_info})."
+        return (
+            f"🧠 [MEMORIA GUARDADA]: Se registró el hecho clave '{key}' en la categoría '{category}' ({mode_info}).\n"
+            "• El hecho ya está persistido exitosamente en la memoria del proyecto.\n"
+            "• ACCIÓN OBLIGATORIA: Concluye tu turno ahora respondiendo al usuario en texto para confirmar que la información fue guardada. NO vuelvas a llamar a ninguna herramienta."
+        )
     return f"❌ Error: No se pudo almacenar el hecho '{key}' en la base de datos de sesiones."
 
 
@@ -327,7 +331,10 @@ def search_memory(query: str, top_k: int = 3, category: Optional[str] = None) ->
     for m in matches:
         lines.append(f"• **[{m['category'].upper()}] {m['key']}** (Relevancia: {m['score']}):\n  {m['content']}")
 
-    return "\n\n".join(lines)
+    return (
+        "\n\n".join(lines)
+        + "\n\n• ACCIÓN OBLIGATORIA: Responde directamente al usuario con la información encontrada arriba. NO vuelvas a llamar a herramientas en este turno."
+    )
 
 
 def list_memories(category: Optional[str] = None) -> str:

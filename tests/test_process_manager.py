@@ -11,8 +11,8 @@ def test_process_manager_background_execution_and_status():
     proc_id = pm.start_process(cmd)
     assert proc_id.startswith("proc_")
 
-    # Esperar hasta que el proceso termine y capture stdout
-    for _ in range(30):
+    # Esperar hasta que el proceso termine y capture stdout (hasta 6 segundos en Windows)
+    for _ in range(60):
         time.sleep(0.1)
         status = pm.get_status(proc_id)
         if not status.get("is_running", True) and "FINISHED_PROCESS" in status.get("stdout", ""):
