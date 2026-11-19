@@ -4,6 +4,7 @@ Contiene la lógica de guardas anti-bucles periódicos, protecciones matemática
 de ventana deslizante y validaciones heurísticas para evitar ping-pong y estancamiento.
 """
 
+import ast
 import json
 from pathlib import Path
 import re
@@ -113,6 +114,17 @@ def check_circuit_breaker(
             "Concluye tu turno ahora resumiendo la solución para el usuario en tu respuesta final."
         )
 
+    # Regla: Bloquear remember_fact cuando el usuario está haciendo una pregunta
+    if tool_name == "remember_fact":
+        prompt_q = any(user_prompt.lower().strip().startswith(q) for q in ["qué", "que", "¿qué", "¿que", "cuál", "cual", "¿cuál", "¿cual", "dime", "cuéntame", "muestra", "dónde", "¿dónde"])
+        if prompt_q:
+            return True, (
+                "⛔ [CIRCUIT BREAKER - HERRAMIENTA INCORRECTA]: El usuario está haciendo una pregunta, NO solicitando guardar un hecho nuevo.\n"
+                "• Está TERMINANTEMENTE PROHIBIDO llamar a 'remember_fact' para responder preguntas.\n"
+                "• ACCIÓN OBLIGATORIA: Si necesitas consultar la memoria persistente, llama a 'search_memory(query=...)' o 'list_memories()'. "
+                "Si la información ya está en el historial de la conversación, responde DIRECTAMENTE al usuario en texto claro."
+            )
+
     # Bloqueo de remember_fact repetido
     if tool_name == "remember_fact" and action_history:
         rem_calls = [a for a in action_history if a.startswith("remember_fact:")]
@@ -149,19 +161,57 @@ def check_circuit_breaker(
                 "• ACCIÓN OBLIGATORIA: Revisa la solicitud inicial del usuario e implementa ÚNICAMENTE los archivos especificados en la tarea."
             )
 
-    # Bloqueo de herramientas de memoria persistente durante depuración activa de fallos en tests
-    if tool_name in ["remember_fact", "search_memory", "list_memories"] and last_test_exit_code is not None and last_test_exit_code != 0:
-        return True, (
-            "⛔ [CIRCUIT BREAKER]: Las pruebas unitarias están fallando actualmente.\n"
-            "• Concéntrate en depurar y corregir el código con 'edit_file' o 'write_file' y luego ejecutar 'run_tests()'.\n"
-            "• NO uses herramientas de memoria persistente mientras haya errores activos en los tests."
-        )
+        # Bloqueo de mutación de archivos no relacionados ni existentes cuando el prompt solicitó archivos específicos
+        prompt_py_files = set(re.findall(r"['\"]?([a-zA-Z0-9_\-\.]+\.py)['\"]?", user_prompt))
+        if prompt_py_files and not Path(target_p).exists() and (target_name not in prompt_py_files or (Path(target_p).parent != Path(".") and target_p not in prompt_py_files)):
+            valid_files_str = ", ".join(f"'{f}'" for f in sorted(list(prompt_py_files)))
+            return True, (
+                f"⛔ [CIRCUIT BREAKER - ARCHIVO NO SOLICITADO]: '{target_name}' no fue solicitado en la instrucción ni existe en el proyecto.\n"
+                f"• Los archivos solicitados por el usuario son: {valid_files_str}.\n"
+                f"• ACCIÓN OBLIGATORIA: Concéntrate exclusivamente en implementar o corregir {valid_files_str} y ejecuta 'run_tests()'."
+            )
+
+    # Bloqueo estricto de herramientas pasivas durante depuración activa de fallos en tests
+    if last_test_exit_code is not None and last_test_exit_code != 0:
+        if tool_name in ["remember_fact", "search_memory", "list_memories", "list_directory", "get_repo_map", "get_plan", "search_codebase", "grep_search", "grep"]:
+            failure_msg = f"\n📋 [FALLO EN TESTS REPORTADO]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+            return True, (
+                f"⛔ [CIRCUIT BREAKER - EVASIÓN DE FALLO EN TESTS]: Las pruebas unitarias están fallando actualmente (Exit code {last_test_exit_code}).\n"
+                f"• Está TERMINANTEMENTE PROHIBIDO usar herramientas pasivas ('{tool_name}') mientras los tests no pasen.\n"
+                f"{failure_msg}"
+                "• ACCIÓN OBLIGATORIA: Corrige el código en disco usando 'write_file' o 'edit_file' para resolver el fallo y ejecuta inmediatamente 'run_tests()'."
+            )
 
     # Regla: Verificación Obligatoria tras Modificación de Código
     if tool_name in ["write_file", "edit_file"]:
         target_path_str = str(args.get("path", "") or "")
         target_file_obj = Path(target_path_str) if target_path_str else None
-        if target_file_obj and not target_file_obj.name.startswith("test_"):
+        if target_file_obj:
+            # Protección del archivo fuente si el fallo de tests es un ImportError de símbolo inexistente en tests
+            if last_test_exit_code is not None and last_test_exit_code != 0 and last_test_failure_summary:
+                m_imp = re.search(r"cannot import name ['\"]([A-Za-z0-9_]+)['\"] from ['\"]([A-Za-z0-9_]+)['\"]", last_test_failure_summary)
+                if m_imp:
+                    bad_sym, mod_name = m_imp.group(1), m_imp.group(2)
+                    mod_file = Path.cwd() / f"{mod_name}.py"
+                    if not mod_file.is_file():
+                        found = list(Path.cwd().glob(f"**/{mod_name}.py"))
+                        if found:
+                            mod_file = found[0]
+                    if mod_file.is_file() and target_file_obj.name == mod_file.name:
+                        try:
+                            m_tree = ast.parse(mod_file.read_text(encoding="utf-8", errors="replace"))
+                            mod_syms = [n.name for n in ast.iter_child_nodes(m_tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                            if mod_syms and bad_sym not in mod_syms:
+                                syms_str = ", ".join(repr(s) for s in mod_syms)
+                                return True, (
+                                    f"⛔ [CIRCUIT BREAKER - ERROR DE IMPORTACIÓN EN TESTS]: '{mod_file.name}' ya define los símbolos requeridos: {syms_str}.\n"
+                                    f"• El fallo en los tests ocurre porque el archivo de pruebas intentó importar '{bad_sym}' que no existe en '{mod_file.name}'.\n"
+                                    f"• Está TERMINANTEMENTE PROHIBIDO modificar o vaciar '{mod_file.name}'.\n"
+                                    f"• ACCIÓN OBLIGATORIA: Modifica el archivo de pruebas ('test_{mod_name}.py') con 'write_file' o 'edit_file' para importar {syms_str} y ejecuta 'run_tests()'."
+                                )
+                        except Exception:
+                            pass
+
             recent_writes = [
                 a for a in (action_history or [])
                 if (a.startswith("write_file:") or a.startswith("edit_file:"))
@@ -175,23 +225,39 @@ def check_circuit_breaker(
                         f"• Está TERMINANTEMENTE PROHIBIDO volver a modificar o sobrescribir '{target_file_obj.name}' sin haber comprobado el resultado.\n"
                         "• ACCIÓN OBLIGATORIA: Tu siguiente llamada DEBE SER 'run_tests()' o 'run_command(command=\"pytest\")' para verificar si el error fue resuelto."
                     )
-                # Caso B: Refactorización o edición inicial realizada pero aún no se ejecutan las pruebas
-                stem = target_file_obj.stem
-                test_files = list(Path.cwd().glob(f"test_{stem}.py")) or list(Path.cwd().glob("test_*.py"))
-                if test_files and not tests_executed_in_turn:
+                # Caso B: Otros archivos requeridos en la instrucción inicial aún no han sido creados
+                prompt_py_files = [f for f in re.findall(r"['\"]?([a-zA-Z0-9_\-\.]+\.py)['\"]?", user_prompt) if f != target_file_obj.name]
+                missing_prompt_files = [f for f in prompt_py_files if not (Path.cwd() / f).is_file() and not list(Path.cwd().glob(f"**/{f}"))]
+                if missing_prompt_files:
+                    next_file = missing_prompt_files[0]
+                    target_syms = []
+                    if target_file_obj.is_file():
+                        try:
+                            t_tree = ast.parse(target_file_obj.read_text(encoding="utf-8", errors="replace"))
+                            target_syms = [n.name for n in ast.iter_child_nodes(t_tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                        except Exception:
+                            pass
+                    syms_hint = f" probando {', '.join(repr(s) for s in target_syms)} ('from {target_file_obj.stem} import {', '.join(target_syms)}')" if target_syms else ""
                     return True, (
-                        f"⛔ [CIRCUIT BREAKER - VERIFICACIÓN OBLIGATORIA]: Ya modificaste el código en '{target_file_obj.name}'.\n"
-                        f"• Está TERMINANTEMENTE PROHIBIDO volver a sobrescribir '{target_file_obj.name}' antes de comprobar que las pruebas unitarias pasen.\n"
-                        "• ACCIÓN OBLIGATORIA: Tu siguiente llamada DEBE SER 'run_tests()' o 'run_command(command=\"pytest\")' para verificar la refactorización."
+                        f"⛔ [CIRCUIT BREAKER - SOBREESCRITURA PREMATURA]: Ya creaste '{target_file_obj.name}' exitosamente.\n"
+                        f"• No vuelvas a sobrescribirlo. La instrucción requiere crear '{next_file}'.\n"
+                        f"• ACCIÓN OBLIGATORIA: Tu siguiente llamada DEBE SER 'write_file' para crear '{next_file}'{syms_hint}."
                     )
+                # Caso C: Todos los archivos requeridos ya existen y aún no se corren los tests
+                if not tests_executed_in_turn and (list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("tests/test_*.py"))):
+                    if not (known_syntax_error_files and (target_file_obj.name in known_syntax_error_files or str(target_file_obj) in known_syntax_error_files)):
+                        return True, (
+                            f"⛔ [CIRCUIT BREAKER - VERIFICACIÓN OBLIGATORIA]: Los componentes solicitados ya fueron creados en disco.\n"
+                            f"• Está TERMINANTEMENTE PROHIBIDO volver a sobrescribir '{target_file_obj.name}' antes de comprobar que las pruebas unitarias pasen.\n"
+                            "• ACCIÓN OBLIGATORIA: Tu siguiente llamada DEBE SER 'run_tests()' o 'run_command(command=\"pytest\")' para verificar la solución."
+                        )
 
-    # Regla Anti-Bucle de Inspección Pasiva tras Verificación Exitosa de Código
-    if tool_name in ["get_repo_map", "list_directory", "search_codebase", "grep_search", "grep"]:
-        if last_test_exit_code == 0 and files_modified_in_turn:
-            return True, (
-                "⛔ [COMPLETION GUARD]: Todas las pruebas unitarias ya pasaron exitosamente (Exit code 0) "
-                "y los archivos requeridos están completos en disco. Concluye tu turno ahora resumiendo la solución para el usuario."
-            )
+    # Regla Anti-Bucle tras Verificación Exitosa de Código (Completion Guard)
+    if last_test_exit_code == 0 and files_modified_in_turn:
+        return True, (
+            "⛔ [COMPLETION GUARD]: Todas las pruebas unitarias ya pasaron exitosamente (Exit code 0) "
+            "y los archivos requeridos están completos en disco. Concluye tu turno ahora resumiendo la solución para el usuario."
+        )
 
     if tool_name in ["read_file", "get_file_outline", "get_git_diff", "get_git_status", "get_repo_map", "list_directory", "search_codebase", "grep_search", "grep", "get_diagnostics"]:
 
@@ -202,7 +268,7 @@ def check_circuit_breaker(
             if len(same_diag) >= 1:
                 return True, (
                     f"⛔ [CIRCUIT BREAKER - DIAGNÓSTICO DUPLICADO]: Ya obtuviste el diagnóstico de '{target_p}'. El código no tiene errores de sintaxis.\n"
-                    "• ACCIÓN OBLIGATORIA: Modifica el archivo de implementación ('math_lib.py') con 'edit_file' para corregir la aserción y corre 'run_tests()'."
+                    "• ACCIÓN OBLIGATORIA: Modifica el archivo de implementación correspondiente con 'edit_file' para corregir el fallo y corre 'run_tests()'."
                 )
 
         # Bloqueo de get_repo_map repetido
@@ -533,6 +599,14 @@ def check_circuit_breaker(
                 f"pero la última ejecución de pruebas falló (Exit Code {last_test_exit_code}).\n"
                 f"{failure_detail}"
                 "• ACCIÓN OBLIGATORIA: No puedes completar el plan mientras las pruebas fallen. Corrige el código o los tests primero usando 'write_file' o 'edit_file', y vuelve a ejecutar 'run_tests()'."
+            )
+        if last_test_exit_code is not None and last_test_exit_code != 0 and not files_modified_since_cmd_fail:
+            failure_detail = f"\n📋 [DETALLE DEL FALLO EN TESTS]:\n{last_test_failure_summary}\n" if last_test_failure_summary else ""
+            return True, (
+                f"⛔ [CIRCUIT BREAKER - EVASIÓN DE FALLO EN TESTS]: Las pruebas unitarias están fallando actualmente (Exit Code {last_test_exit_code}).\n"
+                f"{failure_detail}"
+                "• Está TERMINANTEMENTE PROHIBIDO llamar a 'update_plan' sin haber modificado ningún archivo para solucionar el fallo.\n"
+                "• ACCIÓN OBLIGATORIA: Corrige el código en disco con 'edit_file' o 'write_file' y corre 'run_tests()' de inmediato."
             )
         if is_marking_completed and not files_modified_in_turn:
             if any(k in user_prompt.lower() for k in ["crea", "implementa", "modifica", "refactoriza", "cambia", "corrige"]):

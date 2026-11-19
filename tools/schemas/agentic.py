@@ -53,7 +53,7 @@ AGENTIC_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "function": {
-            "description": "[MEMORIA SEMÁNTICA PERSISTENTE] Almacena hechos arquitectónicos, decisiones clave o reglas del usuario en SQLite con embeddings vectoriales locales para recordarlos entre diferentes sesiones.",
+            "description": "[GUARDAR EN MEMORIA] Almacena hechos arquitectónicos, decisiones clave o configuraciones en SQLite. NUNCA uses esta herramienta para responder preguntas ni consultar datos existentes; para consultar la memoria usa 'search_memory'.",
             "name": "remember_fact",
             "parameters": {
                 "properties": {
@@ -81,7 +81,7 @@ AGENTIC_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "function": {
-            "description": "[BÚSQUEDA SEMÁNTICA VECTORIAL] Busca hechos, contexto histórico y decisiones arquitectónicas previas en milisegundos mediante similitud de embeddings.",
+            "description": "[CONSULTAR MEMORIA DEL PROYECTO] Consulta y busca hechos, decisiones o configuraciones previamente guardadas en la memoria semántica cuando el usuario pregunte por ellas.",
             "name": "search_memory",
             "parameters": {
                 "properties": {

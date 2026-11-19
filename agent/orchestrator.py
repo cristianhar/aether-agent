@@ -797,7 +797,7 @@ class AgentOrchestrator:
                     recent_failed_tools.append(tool_name)
                     last_failed_tool_key = tool_call_key
                     self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
-                    if ("COMPLETION GUARD" in breaker_msg and files_modified_in_turn) or (tool_name == "update_plan" and last_test_exit_code == 0 and files_modified_in_turn) or (tool_name == "remember_fact" and "MEMORIA YA REGISTRADA" in breaker_msg):
+                    if (("COMPLETION GUARD" in breaker_msg or (tool_name == "update_plan" and last_test_exit_code == 0)) and files_modified_in_turn and (last_test_exit_code is None or last_test_exit_code == 0)) or (tool_name == "remember_fact" and "MEMORIA YA REGISTRADA" in breaker_msg):
                         # Si el plan ya está formalmente completado y verificado, o las pruebas ya pasaron con éxito,
                         # concluimos el turno limpiamente sin penalizar ni ciclar
                         clean_answer = re.sub(r"```[\s\S]*?```|\{[\s\S]*?\}", "", content).strip()
@@ -806,7 +806,7 @@ class AgentOrchestrator:
                             if tool_name == "remember_fact":
                                 final_answer = "He registrado la información en la memoria semántica del proyecto con éxito."
                             else:
-                                final_answer = "He implementado la solución solicitada y verificado exitosamente que todas las pruebas unitarias pasen con código 0."
+                                final_answer = "He implementado la solución y verificado los cambios exitosamente asegurando que todas las pruebas unitarias pasen con código 0."
                         else:
                             final_answer = clean_answer
                         self.memory.add_assistant_message(content=final_answer)
@@ -904,7 +904,7 @@ class AgentOrchestrator:
                 # 8. Actualización del estado del Circuit Breaker
                 if tool_name in ["write_file", "edit_file", "apply_patch"]:
                     target_path = args.get("path")
-                    has_syntax_err = ("SyntaxError" in tool_result) or ("error de sintaxis" in tool_result.lower())
+                    has_syntax_err = ("SyntaxError" in tool_result) or ("error de sintaxis" in tool_result.lower()) or ("Auto-Linter" in tool_result) or ("Error de importación" in tool_result)
                     if tool_name in ["edit_file", "apply_patch"]:
                         executed_edits.add(f"{target_path}:{args.get('target', '')}")
                     elif tool_name == "write_file" and is_success:
@@ -920,6 +920,13 @@ class AgentOrchestrator:
                         if target_path:
                             known_syntax_error_files.discard(target_path)
                             known_syntax_error_files.discard(Path(target_path).name)
+                        if self.hooks.mode == "review" and not (list(Path.cwd().glob("test_*.py")) or list(Path.cwd().glob("tests/test_*.py"))):
+                            self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
+                            final_answer = f"Los cambios en '{target_path}' han sido revisados, aprobados y aplicados exitosamente en modo REVIEW."
+                            self.memory.add_assistant_message(content=final_answer)
+                            self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
+                            self.set_state(AgentState.COMPLETED)
+                            break
                     else:
                         if tool_name in ["edit_file", "apply_patch"]:
                             consecutive_edit_failures += 1
@@ -934,7 +941,15 @@ class AgentOrchestrator:
                 elif tool_name == "update_plan":
                     plan_active_in_turn = True
                     if is_success and ("¡Todos los pasos del plan han sido completados" in tool_result or "🎉 COMPLETADO" in tool_result or args.get("is_completed") is True):
-                        plan_completed_in_turn = True
+                        if last_test_exit_code is None or last_test_exit_code == 0:
+                            plan_completed_in_turn = True
+                            if files_modified_in_turn and last_test_exit_code == 0:
+                                self._record_and_feed_result(tool_name, args, tool_result, is_success, tool_dur_ms)
+                                final_answer = "He implementado la solución solicitada y verificado exitosamente que todas las pruebas unitarias pasen con código 0."
+                                self.memory.add_assistant_message(content=final_answer)
+                                self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
+                                self.set_state(AgentState.COMPLETED)
+                                break
 
                 elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:
                     files_modified_since_cmd_fail = True
@@ -982,10 +997,60 @@ class AgentOrchestrator:
                             tool_result += (
                                 f"\n💡 [DIAGNÓSTICO PRECISO DE ASERCIÓN]: La prueba unitaria falló porque la función retornó '{val_act}' "
                                 f"pero el test espera estrictamente '{val_exp}'.\n"
-                                f"• ACCIÓN OBLIGATORIA: Modifica la función con 'edit_file' o 'write_file' para que retorne '{val_exp}' en ese caso."
+                                "• Si la lógica de la función es correcta y el archivo de pruebas contenía valores de aserción erróneos o tipos incompatibles, corrige el archivo de pruebas con 'edit_file'.\n"
+                                f"• Si la función tiene un bug de cálculo o validación, modifícala con 'edit_file' para que retorne '{val_exp}' en ese caso."
                             )
                         elif m_err:
                             err_line = m_err.group(1).strip()
+                            m_imp = re.search(r"cannot import name ['\"]([A-Za-z0-9_]+)['\"] from ['\"]([A-Za-z0-9_]+)['\"]", err_line)
+                            if m_imp:
+                                bad_sym, mod_name = m_imp.group(1), m_imp.group(2)
+                                mod_file = Path.cwd() / f"{mod_name}.py"
+                                if not mod_file.is_file():
+                                    found = list(Path.cwd().glob(f"**/{mod_name}.py"))
+                                    if found:
+                                        mod_file = found[0]
+                                mod_syms = []
+                                if mod_file.is_file():
+                                    try:
+                                        m_tree = ast.parse(mod_file.read_text(encoding="utf-8", errors="replace"))
+                                        mod_syms = [n.name for n in ast.iter_child_nodes(m_tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                                    except Exception:
+                                        pass
+                                if mod_syms and bad_sym not in mod_syms:
+                                    syms_str = ", ".join(repr(s) for s in mod_syms)
+                                    guidance = (
+                                        f"\n💡 [DIAGNÓSTICO DEL ERROR EN PRUEBAS]: Se produjo '{err_line}'.\n"
+                                        f"• El archivo de pruebas intentó importar '{bad_sym}' desde '{mod_name}.py', pero '{mod_name}.py' define: {syms_str}.\n"
+                                        f"• Está TERMINANTEMENTE PROHIBIDO modificar '{mod_name}.py'.\n"
+                                        f"• ACCIÓN OBLIGATORIA: Modifica el archivo de pruebas ('test_{mod_name}.py') con 'write_file' o 'edit_file' para importar y probar {syms_str} ('from {mod_name} import {', '.join(mod_syms)}') y corre 'run_tests()' de inmediato."
+                                    )
+                                else:
+                                    guidance = (
+                                        f"\n💡 [DIAGNÓSTICO DEL ERROR EN PRUEBAS]: Se produjo '{err_line}'.\n"
+                                        "• Existe una discrepancia entre los nombres exportados en el código fuente y los nombres importados en las pruebas unitarias.\n"
+                                        "• ACCIÓN OBLIGATORIA: Haz coincidir el nombre exacto de la función en ambos archivos usando 'write_file' o 'edit_file' y corre 'run_tests()' de inmediato."
+                                    )
+                            elif any(e in err_line for e in ["ImportError", "AttributeError", "NameError"]):
+                                guidance = (
+                                    f"\n💡 [DIAGNÓSTICO DEL ERROR EN PRUEBAS]: Se produjo '{err_line}'.\n"
+                                    "• Existe una discrepancia entre los identificadores definidos en el código fuente y los usados en las pruebas unitarias.\n"
+                                    "• ACCIÓN OBLIGATORIA: Haz coincidir los nombres usando 'write_file' o 'edit_file' y corre 'run_tests()' de inmediato."
+                                )
+                            elif "TypeError" in err_line:
+                                guidance = (
+                                    f"\n💡 [DIAGNÓSTICO DEL ERROR EN PRUEBAS]: Se produjo '{err_line}'.\n"
+                                    "• Revisa la signatura y los argumentos pasados en las llamadas de las pruebas unitarias.\n"
+                                    "• ACCIÓN OBLIGATORIA: Corrige los argumentos o la definición de la función usando 'write_file' o 'edit_file' y corre 'run_tests()' de inmediato."
+                                )
+                            else:
+                                guidance = (
+                                    f"\n💡 [DIAGNÓSTICO DEL ERROR EN PRUEBAS]: Se produjo '{err_line}'.\n"
+                                    "• Revisa la definición de la función y las llamadas en las pruebas unitarias.\n"
+                                    "• ACCIÓN OBLIGATORIA: Corrige el código en 'write_file' o 'edit_file' y corre 'run_tests()' de inmediato. "
+                                    "Está TERMINANTEMENTE PROHIBIDO usar herramientas pasivas (list_directory, get_repo_map) o actualizar el plan mientras este error persista."
+                                )
+                            tool_result += guidance
                         else:
                             failed_test_m = re.search(r"(FAILED\s+[^\n\r]+)", tool_result)
                             if failed_test_m:

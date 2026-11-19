@@ -4,6 +4,7 @@ Verifica que AETHER no entre en bucles de re-ejecución sin modificaciones de c�
 y que detecte SyntaxErrors y subcarpetas desalineadas.
 """
 
+import os
 from pathlib import Path
 import tempfile
 from agent.orchestrator import AgentOrchestrator
@@ -566,6 +567,62 @@ def test_circuit_breaker_update_plan_none_target_file_obj_safe():
     )
     assert blocked_adv is False
     assert msg_adv == ""
+
+
+def test_auto_linter_detects_bad_test_imports():
+    """El Auto-Linter debe advertir cuando un archivo de prueba intenta importar una clase inexistente de un módulo de funciones."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        orig = os.getcwd()
+        os.chdir(tmp_dir)
+        try:
+            write_file("sample.py", "def calculate_total(x: int) -> int:\n    return x * 2\n")
+            res = write_file("test_sample.py", "from sample import SampleClass\n")
+            assert "Error de importación" in res
+            assert "SampleClass" in res
+            assert "calculate_total" in res
+        finally:
+            os.chdir(orig)
+
+
+def test_write_file_reports_defined_symbols():
+    """write_file debe listar los símbolos exportados en archivos Python."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        orig = os.getcwd()
+        os.chdir(tmp_dir)
+        try:
+            res = write_file("calc.py", "def add(a: int, b: int) -> int:\n    return a + b\n\nclass Calculator:\n    pass\n")
+            assert "Símbolos definidos en 'calc.py'" in res
+            assert "def add(...)" in res
+            assert "class Calculator" in res
+            assert "from calc import add, Calculator" in res
+        finally:
+            os.chdir(orig)
+
+
+def test_circuit_breaker_blocks_source_rewrite_on_test_import_error():
+    """Circuit breaker debe impedir destruir el código fuente cuando el fallo es un import erróneo en el test."""
+    from agent.circuit_breaker import check_circuit_breaker
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        orig = os.getcwd()
+        os.chdir(tmp_dir)
+        try:
+            Path("validator.py").write_text("def is_valid_email(e: str) -> bool:\n    return True\n", encoding="utf-8")
+            failure_summary = "ImportError: cannot import name 'Validator' from 'validator' (/path/to/validator.py)"
+            blocked, msg = check_circuit_breaker(
+                tool_name="write_file",
+                args={"path": "validator.py", "content": "class Validator: pass"},
+                last_test_exit_code=1,
+                last_test_failure_summary=failure_summary,
+                user_prompt="Crea validator.py con is_valid_email y test_validator.py"
+            )
+            assert blocked is True
+            assert "ERROR DE IMPORTACIÓN EN TESTS" in msg
+            assert "is_valid_email" in msg
+            assert "Validator" in msg
+            assert "test_validator.py" in msg
+        finally:
+            os.chdir(orig)
+
 
 
 

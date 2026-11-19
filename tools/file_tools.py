@@ -95,15 +95,50 @@ def read_file(path: str, start_line: int = 1, end_line: int = 200) -> str:
 def check_syntax(file_path: Path, new_content: str) -> Optional[str]:
     """
     Superpoder: Auto-Linter sintáctico instantáneo.
-    Detecta SyntaxErrors en archivos Python y JSON al instante de ser modificados.
+    Detecta SyntaxErrors en archivos Python y JSON al instante de ser modificados,
+    así como discrepancias de importación de símbolos inexistentes en archivos de prueba.
     """
     if file_path.suffix == ".py":
         try:
-            import ast
-            ast.parse(new_content, filename=str(file_path))
+            tree = ast.parse(new_content, filename=str(file_path))
         except SyntaxError as se:
             snippet = se.text.strip() if se.text else ""
             return f"⚠️ [Auto-Linter] Error de sintaxis en línea {se.lineno}: {se.msg} -> '{snippet}'"
+
+        # Verificación estática de importaciones en archivos de test
+        if file_path.name.startswith("test_"):
+            sibling_stem = file_path.stem[5:]
+            possible_siblings = [
+                file_path.parent / f"{sibling_stem}.py",
+                Path.cwd() / f"{sibling_stem}.py",
+            ]
+            for sibling_path in possible_siblings:
+                if sibling_path.is_file():
+                    try:
+                        s_tree = ast.parse(sibling_path.read_text(encoding="utf-8", errors="replace"))
+                        defined_symbols = set()
+                        for node in ast.iter_child_nodes(s_tree):
+                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                                defined_symbols.add(node.name)
+
+                        if defined_symbols:
+                            bad_imports = []
+                            for node in ast.walk(tree):
+                                if isinstance(node, ast.ImportFrom) and node.module == sibling_stem:
+                                    for alias in node.names:
+                                        if alias.name != "*" and alias.name not in defined_symbols:
+                                            bad_imports.append(alias.name)
+                            if bad_imports:
+                                bad_str = ", ".join(f"'{b}'" for b in bad_imports)
+                                def_str = ", ".join(f"'{d}'" for d in sorted(list(defined_symbols)))
+                                return (
+                                    f"⚠️ [Auto-Linter] Error de importación en '{file_path.name}': "
+                                    f"Intentaste importar {bad_str} desde '{sibling_stem}', pero '{sibling_stem}.py' únicamente define: {def_str}.\n"
+                                    f"🚨 [ACCIÓN OBLIGATORIA]: Reescribe '{file_path.name}' importando y probando exclusivamente {def_str} ('from {sibling_stem} import {', '.join(sorted(list(defined_symbols)))}') mediante funciones de prueba directas ('def test_{sorted(list(defined_symbols))[0]}(): assert ...')."
+                                )
+                    except Exception:
+                        pass
+                    break
     elif file_path.suffix == ".json":
         try:
             import json
@@ -170,13 +205,19 @@ def auto_heal_missing_imports(file_path: Path, content: str) -> str:
 
     # Auto-sanación de discrepancias de nombres entre archivo de pruebas y módulo fuente
     # Ej: test_kv_store.py importa KeyValueStore cuando kv_store.py define KVStore
+    # Ej: test_validator.py importa validate_email cuando validator.py define is_valid_email
     if file_path.name.startswith("test_"):
         sibling_stem = file_path.stem[5:]
         sibling_path = file_path.parent / f"{sibling_stem}.py"
+        if not sibling_path.is_file():
+            alt = Path.cwd() / f"{sibling_stem}.py"
+            if alt.is_file():
+                sibling_path = alt
         if sibling_path.is_file():
             try:
                 s_tree = ast.parse(sibling_path.read_text(encoding="utf-8", errors="replace"))
                 s_classes = [n.name for n in ast.walk(s_tree) if isinstance(n, ast.ClassDef)]
+                s_funcs = [n.name for n in ast.iter_child_nodes(s_tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
                 if len(s_classes) == 1:
                     target_class = s_classes[0]
                     pattern = rf"from\s+{sibling_stem}\s+import\s+([A-Za-z0-9_]+)"
@@ -187,6 +228,20 @@ def auto_heal_missing_imports(file_path: Path, content: str) -> str:
                                 m.group(0),
                                 f"from {sibling_stem} import {target_class} as {imported_name}"
                             )
+                elif len(s_classes) == 0 and len(s_funcs) >= 1:
+                    target_func = s_funcs[0]
+                    pattern = rf"from\s+{sibling_stem}\s+import\s+([A-Za-z0-9_,\s]+)"
+                    for m in re.finditer(pattern, content):
+                        raw_imports = [x.strip() for x in m.group(1).split(",") if x.strip()]
+                        replacements = []
+                        for imp in raw_imports:
+                            if imp not in s_funcs and imp != "*" and imp and imp[0].islower() and target_func[0].islower():
+                                replacements.append(f"{target_func} as {imp}")
+                            else:
+                                replacements.append(imp)
+                        if replacements and replacements != raw_imports:
+                            new_import_line = f"from {sibling_stem} import {', '.join(replacements)}"
+                            content = content.replace(m.group(0), new_import_line)
             except Exception:
                 pass
 
@@ -351,6 +406,22 @@ def write_file(path: str, content: str = "") -> str:
         
         syntax_warn = check_syntax(file_path, content)
         msg = f"Éxito: Archivo '{path}' guardado correctamente ({len(content)} caracteres)."
+        if file_path.suffix == ".py":
+            try:
+                tree = ast.parse(content)
+                defs = []
+                for node in ast.iter_child_nodes(tree):
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        defs.append(f"def {node.name}(...)")
+                    elif isinstance(node, ast.ClassDef):
+                        defs.append(f"class {node.name}")
+                if defs:
+                    msg += f"\n• Símbolos definidos en '{file_path.name}': {', '.join(defs)}."
+                    if not file_path.name.startswith("test_"):
+                        symbol_names = [n.name for n in ast.iter_child_nodes(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+                        msg += f"\n• En tus pruebas unitarias, importa ÚNICAMENTE estos identificadores: 'from {file_path.stem} import {', '.join(symbol_names)}'."
+            except Exception:
+                pass
         if syntax_warn:
             msg += (
                 f"\n{syntax_warn}\n"
@@ -577,11 +648,24 @@ def edit_file(
 
         syntax_warn = check_syntax(file_path, new_content)
         msg = f"Éxito: Archivo '{path}' actualizado correctamente con el bloque reemplazado{note}."
+        if file_path.suffix == ".py":
+            try:
+                tree = ast.parse(new_content)
+                defs = []
+                for node in ast.iter_child_nodes(tree):
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        defs.append(f"def {node.name}(...)")
+                    elif isinstance(node, ast.ClassDef):
+                        defs.append(f"class {node.name}")
+                if defs:
+                    msg += f"\n• Símbolos definidos en '{file_path.name}': {', '.join(defs)}."
+            except Exception:
+                pass
         if syntax_warn:
             msg += (
                 f"\n{syntax_warn}\n"
-                f"🚨 [ACCIÓN OBLIGATORIA]: El archivo '{path}' sigue teniendo errores de sintaxis tras el reemplazo. "
-                "Llama a 'edit_file' nuevamente para corregir la línea señalada antes de ejecutar pruebas o comandos."
+                f"🚨 [ACCIÓN OBLIGATORIA]: El archivo '{path}' sigue teniendo errores tras el reemplazo. "
+                "Llama a 'edit_file' o 'write_file' nuevamente para corregir la línea señalada antes de ejecutar pruebas o comandos."
             )
         return msg
     except Exception as e:

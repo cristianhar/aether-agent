@@ -124,6 +124,7 @@ def run_e2e_agent_test():
         assert Path("test_validator.py").exists(), "test_validator.py no fue creado"
         validator_code = Path("validator.py").read_text(encoding="utf-8")
         assert "is_valid_email" in validator_code or "validate" in validator_code, "La función de validación no fue encontrada en validator.py"
+        assert "número máximo de iteraciones" not in answer.lower(), "El agente alcanzó el límite máximo de iteraciones sin finalizar formalmente"
 
         print("✅ TEST E2E 3 PASADO: El agente programó validator.py, escribió los tests y los corrió de forma autónoma.\n")
     finally:

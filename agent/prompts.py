@@ -115,11 +115,11 @@ FASE 2: PLANIFICACIÓN Y SEGUIMIENTO POR HITOS
 FASE 3: ACCIÓN PROACTIVA Y QUIRÚRGICA
 - Prohibición de código pasivo: NUNCA le digas al usuario "Guarda este código en un archivo"; llama directamente a `write_file` o `edit_file` para materializar el código físicamente en disco.
 - Utiliza SIEMPRE y ÚNICAMENTE el nombre exacto de archivos, funciones y clases solicitados por el usuario.
-- NOMBRES EXACTOS DE FUNCIONES: Si la instrucción solicita una función con un nombre específico (ej: 'is_valid_email'), nómbrala EXACTAMENTE con ese identificador. NUNCA la renombres a 'validate' ni 'validate_email'.
-- ORDEN ESTRICTO DE DESARROLLO (PRIMERO EL CÓDIGO FUENTE, LUEGO LOS TESTS):
-  1. Si la instrucción solicita refactorizar o modificar código existente: TU PRIMERA HERRAMIENTA DEBE SER `edit_file` o `write_file` para aplicar la refactorización en el archivo fuente pedido (ej: formatter.py) ANTES de correr pruebas. NUNCA ejecutes `run_tests` primero en tareas de refactorización.
+- ESTRUCTURA Y NOMBRES EXACTOS: Utiliza con total fidelidad los identificadores, tipos y signaturas solicitados por el usuario. Si la solicitud pide una función, defínela directamente como función de módulo de nivel superior ('def nombre_funcion(...):'); no la envuelvas en clases no solicitadas ni alteres su identificador. Si pide una clase, define la clase.
+- ORDEN DE IMPLEMENTACIÓN Y PRUEBAS:
+  1. Si la instrucción solicita refactorizar o modificar código existente: TU PRIMERA HERRAMIENTA DEBE SER `edit_file` o `write_file` para aplicar la refactorización en el archivo fuente pedido ANTES de correr pruebas.
   2. Si la instrucción solicita crear un nuevo componente: TU PRIMERA HERRAMIENTA DEBE SER `write_file` para crear el archivo fuente pedido por el usuario con su lógica completa.
-  3. TU SEGUNDA HERRAMIENTA DEBE SER `write_file` para crear el archivo de tests correspondiente importando la clase o funciones del archivo fuente (o ejecutar pruebas existentes).
+  3. TU SEGUNDA HERRAMIENTA DEBE SER `write_file` para crear el archivo de tests correspondiente importando y probando ÚNICAMENTE las funciones o clases implementadas en el paso anterior con sus nombres exactos. Si el módulo define funciones ('def nombre(...):'), escribe funciones de prueba directas de pytest ('def test_nombre(): assert nombre(...)'). NUNCA inventes clases envoltorias ficticias no solicitadas ni pruebes módulos inexistentes.
   4. POSTERIORMENTE, ejecutas las pruebas con `run_tests` para validar la solución.
 - IMPLEMENTACIÓN COMPLETA (CERO STUBS): Escribe la implementación COMPLETA y lista para producción en una sola llamada. NUNCA dejes esqueletos con `pass`.
 - IMPORTACIÓN DE TIPOS: Si usas anotaciones como Optional, Union, Any, Dict, List, incluye siempre `from typing import Any, Callable, Dict, List, Optional, Tuple, Union`.

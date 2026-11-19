@@ -364,6 +364,7 @@ def run_agent_tests() -> List[Dict[str, Any]]:
         assert Path("test_validator.py").exists(), "test_validator.py no existe"
         code = Path("validator.py").read_text(encoding="utf-8")
         assert "is_valid_email" in code or "validate" in code
+        assert "número máximo de iteraciones" not in ans.lower(), "El agente alcanzó el límite máximo de iteraciones sin concluir formalmente"
         print("✅ AGENT-E2E-1 PASADO\n")
         results.append({"id": "AGENT-E2E-1", "pass": True, "dur": dur})
     finally:
