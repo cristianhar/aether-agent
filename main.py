@@ -352,15 +352,9 @@ def main():
         render_response(answer)
         return
 
-    # Inicialización de historial persistente y auto-completado por Tab
-    from agent.context import get_workspace_file_mentions, resolve_at_file_mentions
-    workspace_mentions = get_workspace_file_mentions(Path.cwd())
-    cli_completer = WordCompleter(
-        COMPLETION_WORDS + workspace_mentions,
-        meta_dict=COMMANDS_META,
-        ignore_case=True,
-        WORD=True,
-    )
+    # Inicialización de historial persistente y auto-completado interactivo
+    from agent.context import AetherCLICompleter, resolve_at_file_mentions
+    cli_completer = AetherCLICompleter(Path.cwd())
     history_file = Path.cwd() / ".aether" / "cli_history.txt"
     try:
         history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -372,9 +366,9 @@ def main():
         session = PromptSession(
             history=cli_history,
             completer=cli_completer,
-            complete_while_typing=False,
-            reserve_space_for_menu=0,
-            complete_style=CompleteStyle.READLINE_LIKE,
+            complete_while_typing=True,
+            reserve_space_for_menu=6,
+            complete_style=CompleteStyle.COLUMN,
         )
     except Exception:
         session = None

@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 from typing import List, Optional, Tuple
 
+from prompt_toolkit.completion import Completer, Completion
+
 IGNORED_DIRS = {
     ".venv", "venv", ".git", "__pycache__", ".pytest_cache",
     ".aether", "e2e_sandbox", "node_modules", "site-packages",
@@ -193,3 +195,112 @@ def get_workspace_file_mentions(base_dir: Optional[Path] = None, max_results: in
         pass
 
     return sorted(mentions)
+
+
+class AetherCLICompleter(Completer):
+    """
+    Completador interactivo de línea de comandos para AETHER:
+    - Autocompleta comandos slash ('/') con descripción al escribir '/'
+    - Autocompleta subcomandos (ej: '/mode agent | ask | plan | review')
+    - Autocompleta archivos del espacio de trabajo al escribir '@' con búsqueda difusa
+    - NO muestra ningún menú al escribir texto normal (cero distracción visual ni saltos de cursor)
+    """
+    COMMANDS = {
+        "/help": "Muestra la guía interactiva y todos los comandos",
+        "/mode": "Cambia el modo operativo: /mode agent | ask | plan | review",
+        "/mode agent": "Plenos poderes de creación, edición y ejecución autónoma",
+        "/mode ask": "Modo Solo Lectura: inspecciona código y responde dudas",
+        "/mode plan": "Diseña el plan de arquitectura antes de tocar código",
+        "/mode review": "Supervisión interactiva con diffs antes de cada cambio",
+        "/plan": "Activa el modo de planificación arquitectónica",
+        "/test": "Ejecuta las pruebas unitarias con pytest",
+        "/diff": "Muestra las diferencias de código pendientes (git diff)",
+        "/commit": "Genera un commit atómico con mensaje semántico",
+        "/compact": "Compacta el historial para liberar tokens en VRAM",
+        "/undo": "Revierte al checkpoint o commit anterior en 1 segundo",
+        "/checkpoint": "Crea un punto de restauración Git inmediato",
+        "/checkpoint create": "Guarda un snapshot del código actual",
+        "/checkpoint undo": "Revierte al último checkpoint",
+        "/model": "Cambia el modelo de Ollama en caliente",
+        "/memory": "Consulta o busca en la memoria semántica persistente",
+        "/memory list": "Lista todos los recuerdos y decisiones guardadas",
+        "/memory search": "Busca semánticamente en los recuerdos",
+        "/voice": "Muestra la integración con el asistente de voz",
+        "/clear": "Reinicia el historial y contexto de la conversación",
+        "/telemetry": "Muestra métricas de rendimiento y llamadas",
+        "/sessions": "Lista las sesiones persistentes disponibles",
+        "/resume": "Reanuda una sesión previa por ID",
+        "/export": "Exporta la sesión actual a Markdown",
+        "/exit": "Finaliza la sesión de AETHER",
+    }
+
+    MODE_OPTIONS = {
+        "agent": "Plenos poderes de creación y ejecución autónoma",
+        "ask": "Modo Solo Lectura: inspecciona código sin modificarlo",
+        "plan": "Diseña la arquitectura antes de tocar código",
+        "review": "Supervisión interactiva con diffs antes de cambios",
+    }
+
+    def __init__(self, base_dir: Optional[Path] = None):
+        self.base_dir = base_dir or Path.cwd()
+        self._cached_files: List[str] = []
+        self._last_scan_time = 0.0
+
+    def _get_files(self) -> List[str]:
+        import time
+        now = time.time()
+        # Caché de 3 segundos para evitar escaneo intensivo del disco en cada pulsación
+        if not self._cached_files or (now - self._last_scan_time) > 3.0:
+            self._cached_files = get_workspace_file_mentions(self.base_dir)
+            self._last_scan_time = now
+        return self._cached_files
+
+    def get_completions(self, document, complete_event):
+        line = document.current_line_before_cursor
+        word = document.get_word_before_cursor(WORD=True)
+
+        # 1. Subcomandos de /mode
+        if line.startswith("/mode "):
+            arg = line[len("/mode "):].lower().strip()
+            for opt, desc in self.MODE_OPTIONS.items():
+                if opt.startswith(arg):
+                    yield Completion(opt, start_position=-len(arg), display=opt, display_meta=desc)
+            return
+
+        # 2. Comandos Slash (si la palabra o la línea empieza con /)
+        if word.startswith("/"):
+            q = word.lower()
+            for cmd, desc in self.COMMANDS.items():
+                if cmd.lower().startswith(q):
+                    yield Completion(cmd, start_position=-len(word), display=cmd, display_meta=desc)
+            return
+
+        # 3. Menciones de Archivos (si la palabra empieza con @)
+        if word.startswith("@"):
+            q = word[1:].lower()
+            files = self._get_files()
+            matches = []
+            for f in files:
+                f_name = f[1:] if f.startswith("@") else f
+                if not q:
+                    matches.append((0, f, f_name))
+                elif q in f_name.lower():
+                    base = Path(f_name).name.lower()
+                    priority = 0 if f_name.lower().startswith(q) or base.startswith(q) else 1
+                    matches.append((priority, f, f_name))
+
+            if q:
+                matches.sort(key=lambda x: (x[0], len(x[2])))
+
+            for _, f_token, f_name in matches[:30]:
+                yield Completion(
+                    f"@{f_name}",
+                    start_position=-len(word),
+                    display=f"@{f_name}",
+                    display_meta="Archivo"
+                )
+            return
+
+        # 4. Texto normal: no mostrar menú flotante
+        return
+

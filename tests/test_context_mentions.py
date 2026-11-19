@@ -65,3 +65,47 @@ def test_get_workspace_file_mentions():
     mentions = get_workspace_file_mentions(Path.cwd())
     assert len(mentions) > 0
     assert any("main.py" in m for m in mentions)
+
+
+def test_aether_cli_completer_slash_and_at_and_normal_text(tmp_path):
+    from agent.context import AetherCLICompleter
+    from prompt_toolkit.document import Document
+
+    # Crear archivos de prueba
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "server.py").write_text("y = 2\n", encoding="utf-8")
+
+    completer = AetherCLICompleter(tmp_path)
+
+    # 1. Al presionar '/' debe autocompletar comandos slash
+    doc_slash = Document("/", cursor_position=1)
+    slash_comps = [c.text for c in completer.get_completions(doc_slash, None)]
+    assert "/help" in slash_comps
+    assert "/mode" in slash_comps
+    assert "/plan" in slash_comps
+
+    # 2. Subcomandos de /mode
+    doc_mode = Document("/mode ", cursor_position=6)
+    mode_comps = [c.text for c in completer.get_completions(doc_mode, None)]
+    assert "agent" in mode_comps
+    assert "ask" in mode_comps
+    assert "plan" in mode_comps
+    assert "review" in mode_comps
+
+    # 3. Al presionar '@' debe mostrar archivos del proyecto
+    doc_at = Document("@", cursor_position=1)
+    at_comps = [c.text for c in completer.get_completions(doc_at, None)]
+    assert "@app.py" in at_comps
+    assert "@server.py" in at_comps
+
+    # 4. Al presionar '@' en medio del texto con filtro
+    doc_text_at = Document("inspecciona el archivo @app", cursor_position=len("inspecciona el archivo @app"))
+    text_at_comps = [c.text for c in completer.get_completions(doc_text_at, None)]
+    assert "@app.py" in text_at_comps
+    assert "@server.py" not in text_at_comps
+
+    # 5. Texto normal sin '/' y sin '@': NO debe mostrar ningún menú emergente
+    doc_normal = Document("hola agente como estas", cursor_position=len("hola agente como estas"))
+    normal_comps = [c.text for c in completer.get_completions(doc_normal, None)]
+    assert len(normal_comps) == 0
+
