@@ -11,15 +11,8 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
-IGNORE_DIRS = {
-    ".git", ".venv", "venv", "__pycache__", "node_modules",
-    ".pytest_cache", ".idea", ".vscode", "dist", "build", "egg-info", "target"
-}
+from tools.base import DEFAULT_IGNORED_DIRS, DEFAULT_IGNORED_EXTENSIONS
 
-IGNORE_EXTENSIONS = {
-    ".pyc", ".pyo", ".pyd", ".exe", ".dll", ".so", ".dylib",
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".zip", ".tar", ".gz"
-}
 
 
 def _extract_py_symbols(filepath: Path) -> List[str]:
@@ -78,7 +71,7 @@ def generate_repo_map(root_dir: str = ".", max_files: int = 40) -> str:
 
     for current_dir, dirs, files in os.walk(root):
         # Filtrar directorios ignorados
-        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")]
+        dirs[:] = [d for d in dirs if d not in DEFAULT_IGNORED_DIRS and not d.startswith(".")]
 
         rel_dir = Path(current_dir).relative_to(root)
         if rel_dir == Path("."):
@@ -94,7 +87,7 @@ def generate_repo_map(root_dir: str = ".", max_files: int = 40) -> str:
                 return "\n".join(lines)
 
             file_path = Path(current_dir) / f
-            if file_path.suffix in IGNORE_EXTENSIONS or f.startswith("."):
+            if file_path.suffix in DEFAULT_IGNORED_EXTENSIONS or f.startswith("."):
                 continue
 
             count += 1

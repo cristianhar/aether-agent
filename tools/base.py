@@ -17,6 +17,20 @@ class ToolCategory(str, Enum):
     AGENT_MANAGEMENT = "agent_management"
 
 
+DEFAULT_IGNORED_DIRS = {
+    ".git", ".venv", "venv", "__pycache__", "node_modules",
+    ".pytest_cache", ".mypy_cache", ".idea", ".vscode", "dist",
+    "build", "egg-info", "target", ".aether", "site-packages",
+    "e2e_sandbox"
+}
+
+DEFAULT_IGNORED_EXTENSIONS = {
+    ".pyc", ".pyo", ".pyd", ".exe", ".dll", ".so", ".dylib",
+    ".bin", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf",
+    ".zip", ".tar", ".gz", ".7z", ".rar", ".lock"
+}
+
+
 class PermissionLevel(str, Enum):
     READ_ONLY = "read_only"
     WORKSPACE_WRITE = "workspace_write"

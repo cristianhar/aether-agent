@@ -11,11 +11,7 @@ from typing import List, Optional, Tuple
 
 from prompt_toolkit.completion import Completer, Completion
 
-IGNORED_DIRS = {
-    ".venv", "venv", ".git", "__pycache__", ".pytest_cache",
-    ".aether", "e2e_sandbox", "node_modules", "site-packages",
-    "dist", "build", ".idea", ".vscode"
-}
+from tools.base import DEFAULT_IGNORED_DIRS
 
 
 def find_matching_file(token: str, base_dir: Optional[Path] = None) -> Optional[Path]:
@@ -41,7 +37,7 @@ def find_matching_file(token: str, base_dir: Optional[Path] = None) -> Optional[
 
     all_files = [
         f for f in base_dir.rglob("*")
-        if f.is_file() and not any(p in f.parts for p in IGNORED_DIRS)
+        if f.is_file() and not any(p in f.parts for p in DEFAULT_IGNORED_DIRS)
     ]
 
     # 2. Coincidencia exacta por nombre de archivo
@@ -177,7 +173,7 @@ def get_workspace_file_mentions(base_dir: Optional[Path] = None, max_results: in
         for f in base_dir.rglob("*"):
             if not f.is_file():
                 continue
-            if any(p in f.parts for p in IGNORED_DIRS):
+            if any(p in f.parts for p in DEFAULT_IGNORED_DIRS):
                 continue
             if f.suffix.lower() not in allowed_exts:
                 continue

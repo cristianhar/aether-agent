@@ -9,15 +9,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-EXCLUDED_DIRS = {
-    ".git", ".venv", "venv", "node_modules", "__pycache__",
-    ".pytest_cache", ".mypy_cache", ".idea", ".vscode", "dist", "build"
-}
+from tools.base import DEFAULT_IGNORED_DIRS, DEFAULT_IGNORED_EXTENSIONS
 
-EXCLUDED_EXTENSIONS = {
-    ".pyc", ".pyo", ".exe", ".dll", ".so", ".dylib", ".bin",
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz"
-}
 
 
 def list_directory(path: str = ".", max_depth: int = 2) -> str:
@@ -44,7 +37,7 @@ def list_directory(path: str = ".", max_depth: int = 2) -> str:
         # Filtrar excluidos
         valid_entries = [
             e for e in entries
-            if e.name not in EXCLUDED_DIRS and not e.name.startswith(".")
+            if e.name not in DEFAULT_IGNORED_DIRS and not e.name.startswith(".")
         ]
 
         for i, entry in enumerate(valid_entries):
@@ -87,7 +80,7 @@ def search_codebase(
     rg_binary = shutil.which("rg")
     if rg_binary:
         cmd = [rg_binary, "--line-number", "--color", "never", "--max-count", "20", "--fixed-strings"]
-        for excluded in EXCLUDED_DIRS:
+        for excluded in DEFAULT_IGNORED_DIRS:
             cmd.extend(["--glob", f"!{excluded}/*"])
         if file_pattern:
             cmd.extend(["--glob", file_pattern])
@@ -108,13 +101,13 @@ def search_codebase(
 
     for root, dirs, files in os.walk(search_path):
         # Excluir carpetas no deseadas in-place
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
+        dirs[:] = [d for d in dirs if d not in DEFAULT_IGNORED_DIRS and not d.startswith(".")]
 
         for file_name in files:
             if file_pattern and not Path(file_name).match(file_pattern):
                 continue
             ext = Path(file_name).suffix.lower()
-            if ext in EXCLUDED_EXTENSIONS:
+            if ext in DEFAULT_IGNORED_EXTENSIONS:
                 continue
 
             file_full_path = Path(root) / file_name
