@@ -298,6 +298,27 @@ def handle_slash_command(
         console.print("[dim]Tip: Usa '/skills reload' para reescanear o '/skills info <nombre>' para ver detalles.[/dim]")
         return True
 
+    # Directorio y gestión de Subagentes jerárquicos
+    elif cmd in ["/subagents", "/subagent"]:
+        from agent.subagents import get_global_subagent_manager
+        mgr = get_global_subagent_manager()
+        args = user_input[len(user_input.split()[0]):].strip().split()
+
+        if args and args[0] in ["kill", "terminate"] and len(args) > 1:
+            res = mgr.manage_subagents(action="kill", conversation_ids=[args[1]])
+            console.print(f"[bold yellow]{res}[/bold yellow]")
+            return True
+
+        if args and args[0] in ["status", "info"] and len(args) > 1:
+            res = mgr.manage_subagents(action="status", conversation_ids=[args[1]])
+            console.print(Panel(Markdown(res), title=f"[bold cyan]🤖 Estado Subagente: {args[1]}[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+            return True
+
+        res = mgr.manage_subagents(action="list")
+        console.print(Panel(Markdown(res), title="🤖 Directorio de Subagentes", border_style="cyan", box=box.ROUNDED))
+        console.print("[dim]Tip: Usa '/subagents status <id>' para ver su buzón o '/subagents kill <id>' para terminarlo.[/dim]")
+        return True
+
     # Deshacer cambios al checkpoint anterior
     elif cmd == "/undo":
         res = undo_checkpoint()

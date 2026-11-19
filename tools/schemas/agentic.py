@@ -465,5 +465,143 @@ AGENTIC_TOOLS: List[Dict[str, Any]] = [
             }
         },
         "type": "function"
+    },
+    {
+        "function": {
+            "description": "Define un nuevo tipo o rol de subagente reutilizable en tiempo de ejecución con configuración específica de prompts y herramientas.",
+            "name": "define_subagent",
+            "parameters": {
+                "properties": {
+                    "name": {
+                        "description": "Nombre único del tipo de subagente (ej: 'security_auditor', 'sql_optimizer').",
+                        "type": "string"
+                    },
+                    "description": {
+                        "description": "Descripción concisa de qué hace este subagente y cuándo invocarlo.",
+                        "type": "string"
+                    },
+                    "system_prompt": {
+                        "description": "Prompt del sistema especializado con las instrucciones y reglas del subagente.",
+                        "type": "string"
+                    },
+                    "enable_write_tools": {
+                        "description": "Si es True, permite editar archivos y correr comandos; si es False, opera en modo de solo lectura (ASK).",
+                        "type": "boolean"
+                    },
+                    "enable_subagent_tools": {
+                        "description": "Permite al subagente crear o invocar otros subagentes recursivamente.",
+                        "type": "boolean"
+                    },
+                    "enable_mcp_tools": {
+                        "description": "Permite acceso a herramientas de servidores MCP.",
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "name",
+                    "description",
+                    "system_prompt"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
+            "description": "Invoca y despacha una misión a un subagente con su propio contexto de memoria de tokens aislado. Retorna su conversation_id y el resultado inicial.",
+            "name": "invoke_subagent",
+            "parameters": {
+                "properties": {
+                    "type_name": {
+                        "description": "Tipo de subagente a instanciar ('research' para solo lectura, 'tester' para pruebas, 'self' o cualquier tipo definido con define_subagent).",
+                        "type": "string"
+                    },
+                    "role": {
+                        "description": "Descripción breve del rol o cargo específico (ej: 'Explorador AST', 'Validador de Schemas').",
+                        "type": "string"
+                    },
+                    "prompt": {
+                        "description": "Misión o tarea clara, accionable y delimitada que el subagente debe ejecutar.",
+                        "type": "string"
+                    },
+                    "workspace": {
+                        "description": "Modo de espacio de trabajo: 'inherit' para compartir el directorio del proyecto, o 'branch' para un sandbox aislado.",
+                        "enum": [
+                            "inherit",
+                            "branch"
+                        ],
+                        "type": "string"
+                    },
+                    "model": {
+                        "description": "Modelo a usar (por defecto el modelo activo del agente principal).",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "type_name",
+                    "role",
+                    "prompt"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
+            "description": "Envía un mensaje al buzón de un subagente activo por su conversation_id y recibe su respuesta conservando el contexto previo.",
+            "name": "send_message",
+            "parameters": {
+                "properties": {
+                    "recipient": {
+                        "description": "ID de conversación del subagente destinatario (retornado por invoke_subagent).",
+                        "type": "string"
+                    },
+                    "message": {
+                        "description": "Contenido del mensaje, instrucción de seguimiento o aclaración para el subagente.",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "recipient",
+                    "message"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
+            "description": "Administra el ciclo de vida de los subagentes del proyecto: listar subagentes ('list'), consultar buzón ('status'), o terminar instancias ('kill', 'kill_all').",
+            "name": "manage_subagents",
+            "parameters": {
+                "properties": {
+                    "action": {
+                        "description": "Acción a realizar: 'list', 'status', 'kill', 'kill_all'.",
+                        "enum": [
+                            "list",
+                            "status",
+                            "kill",
+                            "kill_all"
+                        ],
+                        "type": "string"
+                    },
+                    "conversation_ids": {
+                        "description": "Lista de IDs de conversación sobre los que aplicar 'kill' o 'status'.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "action"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
     }
 ]

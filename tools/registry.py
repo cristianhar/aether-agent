@@ -32,6 +32,10 @@ from tools.agent_tools import (
     update_artifact_tool,
     read_artifact_tool,
     list_artifacts_tool,
+    define_subagent_tool,
+    invoke_subagent_tool,
+    send_message_tool,
+    manage_subagents_tool,
 )
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
@@ -204,6 +208,10 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "execute_skill": execute_skill_tool,
     "list_mcp_tools": list_mcp_tools,
     "call_mcp_tool": call_mcp_tool_wrapper,
+    "define_subagent": define_subagent_tool,
+    "invoke_subagent": invoke_subagent_tool,
+    "send_message": send_message_tool,
+    "manage_subagents": manage_subagents_tool,
 }
 
 TOOL_ALIASES: Dict[str, str] = {
@@ -256,6 +264,11 @@ TOOL_ALIASES: Dict[str, str] = {
     "clarify_question": "ask_question",
     "clarify_requirements": "ask_question",
     "ask": "ask_question",
+    # Subagentes y mensajería
+    "spawn_subagent": "invoke_subagent",
+    "call_subagent": "invoke_subagent",
+    "message_subagent": "send_message",
+    "subagents": "manage_subagents",
 }
 
 
@@ -411,6 +424,9 @@ PLAN_MODE_TOOL_NAMES = {
     "search_web",
     "fetch_web_page",
     "get_git_status",
+    "invoke_subagent",
+    "send_message",
+    "manage_subagents",
 }
 
 REVIEW_MODE_TOOL_NAMES = {

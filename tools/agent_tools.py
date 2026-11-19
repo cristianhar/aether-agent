@@ -474,3 +474,57 @@ def list_artifacts_tool() -> str:
         lines.append(f"• **{it.get('artifact_id')}** — {it.get('title')} (v{it.get('version', 1)}){fb}\n  Resumen: {it.get('summary', '')}")
     return "\n\n".join(lines)
 
+
+def define_subagent_tool(
+    name: str,
+    description: str,
+    system_prompt: str,
+    enable_write_tools: bool = True,
+    enable_subagent_tools: bool = False,
+    enable_mcp_tools: bool = False,
+) -> str:
+    """Define un nuevo tipo o rol de subagente reutilizable en tiempo de ejecución."""
+    from agent.subagents import get_global_subagent_manager
+    mgr = get_global_subagent_manager()
+    return mgr.define_subagent(
+        name=name,
+        description=description,
+        system_prompt=system_prompt,
+        enable_write_tools=enable_write_tools,
+        enable_subagent_tools=enable_subagent_tools,
+        enable_mcp_tools=enable_mcp_tools,
+    )
+
+
+def invoke_subagent_tool(
+    type_name: str,
+    role: str,
+    prompt: str,
+    workspace: str = "inherit",
+    model: Optional[str] = None,
+) -> str:
+    """Invoca y despacha una misión a un subagente en un contexto aislado."""
+    from agent.subagents import get_global_subagent_manager
+    mgr = get_global_subagent_manager()
+    return mgr.invoke_subagent(
+        type_name=type_name,
+        role=role,
+        prompt=prompt,
+        workspace=workspace,
+        model=model,
+    )
+
+
+def send_message_tool(recipient: str, message: str) -> str:
+    """Envía un mensaje al buzón de un subagente y recibe su respuesta de seguimiento."""
+    from agent.subagents import get_global_subagent_manager
+    mgr = get_global_subagent_manager()
+    return mgr.send_message(recipient=recipient, message=message)
+
+
+def manage_subagents_tool(action: str, conversation_ids: Optional[List[str]] = None) -> str:
+    """Gestiona el ciclo de vida de los subagentes (list, status, kill, kill_all)."""
+    from agent.subagents import get_global_subagent_manager
+    mgr = get_global_subagent_manager()
+    return mgr.manage_subagents(action=action, conversation_ids=conversation_ids)
+
