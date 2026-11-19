@@ -434,21 +434,16 @@ AGENTIC_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "function": {
-            "description": "Skills Runtime: Ejecuta habilidades complejas automatizadas ('review' para auditoría de calidad, 'test_gen' para generar pruebas, 'dependencies' para acoplamiento).",
+            "description": "Skills Runtime: Ejecuta habilidades especializadas de desarrollo ('review' para auditoría de calidad, 'test_gen' para generar pruebas, 'dependencies' para acoplamiento, o habilidades dinámicas de SKILL.md).",
             "name": "execute_skill",
             "parameters": {
                 "properties": {
                     "skill_name": {
-                        "description": "Nombre de la habilidad a ejecutar.",
-                        "enum": [
-                            "review",
-                            "test_gen",
-                            "dependencies"
-                        ],
+                        "description": "Nombre o alias de la habilidad a ejecutar (ej: 'code-review', 'test-scaffold', 'dependency-audit' o habilidades dinámicas descubiertas).",
                         "type": "string"
                     },
                     "target": {
-                        "description": "Archivo o directorio objetivo.",
+                        "description": "Archivo o directorio objetivo sobre el cual ejecutar la habilidad.",
                         "type": "string"
                     }
                 },

@@ -42,7 +42,6 @@ def set_active_artifact_session(session_id: Optional[str]):
 
 def get_active_artifact_session() -> str:
     """Obtiene el identificador de sesión activo para artefactos."""
-    global _ACTIVE_ARTIFACT_SESSION
     return _ACTIVE_ARTIFACT_SESSION or "default"
 
 

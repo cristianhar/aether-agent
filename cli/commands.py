@@ -250,6 +250,54 @@ def handle_slash_command(
         console.print("[dim]Tip: Usa '/artifacts read <id>' para ver el contenido completo de un artefacto.[/dim]")
         return True
 
+    # Catálogo y gestión de Habilidades Especializadas (Skills Runtime)
+    elif cmd in ["/skills", "/skill"]:
+        from agent.skills import get_global_skill_registry
+        reg = get_global_skill_registry()
+        args = user_input[len(user_input.split()[0]):].strip().split()
+
+        if args and args[0] == "reload":
+            reg.reload_skills()
+            console.print(f"[bold green]✓ Skills recargadas exitosamente ({len(reg.skills)} registradas).[/bold green]")
+            return True
+
+        if args and args[0] in ["info", "show", "read"] and len(args) > 1:
+            sk_name = args[1]
+            sk = reg.get_skill(sk_name)
+            if not sk:
+                console.print(f"[bold red]Habilidad '{sk_name}' no encontrada.[/bold red]")
+            else:
+                loc = str(sk.skill_file) if sk.skill_file else "Nativa"
+                console.print(Panel(
+                    Markdown(f"**Ubicación:** `{loc}`\n\n**Disparadores:** `{', '.join(sk.triggers)}`\n\n---\n\n{sk.instructions}"),
+                    title=f"[bold green]🛠️ Skill: {sk.name.upper()}[/bold green]",
+                    border_style="green",
+                    box=box.ROUNDED,
+                ))
+            return True
+
+        table = Table(title="🛠️ Habilidades Disponibles de AETHER (Skills)", box=box.ROUNDED, border_style="green")
+        table.add_column("Habilidad", style="bold green")
+        table.add_column("Tipo", justify="center", style="cyan")
+        table.add_column("Disparadores / Triggers", style="magenta")
+        table.add_column("Descripción", style="white")
+
+        table.add_row("code-review", "Nativa", "review, audit, code_review", "Auditoría estática de calidad, complejidad y docstrings.")
+        table.add_row("test-scaffold", "Nativa", "test_gen, scaffold_tests", "Generador de tests unitarios automáticos con pytest.")
+        table.add_row("dependency-audit", "Nativa", "dependencies, deps", "Análisis de grafo de dependencias e importaciones.")
+
+        for sk in sorted(reg.skills.values(), key=lambda s: s.name):
+            if sk.name not in ["code-review", "test-scaffold", "dependency-audit"]:
+                table.add_row(
+                    sk.name,
+                    "Dinámica",
+                    ", ".join(sk.triggers),
+                    sk.description[:60] + ("..." if len(sk.description) > 60 else "")
+                )
+        console.print(table)
+        console.print("[dim]Tip: Usa '/skills reload' para reescanear o '/skills info <nombre>' para ver detalles.[/dim]")
+        return True
+
     # Deshacer cambios al checkpoint anterior
     elif cmd == "/undo":
         res = undo_checkpoint()

@@ -42,7 +42,9 @@ Thumbs.db
 [Dd]esktop.ini
 
 # AETHER Runtime Data
-.aether/
+.aether/*
+!.aether/skills/
+!.aether/rules/
 
 # Node / Tauri / Rust
 node_modules/

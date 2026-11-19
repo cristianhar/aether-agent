@@ -20,6 +20,7 @@ from agent.permissions import PermissionDecision, PermissionEngine, PermissionRe
 from agent.prompts import SYSTEM_PROMPT, get_system_prompt
 from agent.safety import check_command_safety
 from agent.session import SessionManager
+from agent.skills import get_global_skill_registry
 from agent.state import AgentState, CancellationToken
 from agent.telemetry import TelemetryLogger
 from tools.base import PermissionLevel, ToolCategory
@@ -110,6 +111,11 @@ class AgentOrchestrator:
         if loaded_rules:
             system_prompt += "\n\n" + "\n\n".join(loaded_rules)
 
+        self.skill_registry = get_global_skill_registry()
+        skills_catalog = self.skill_registry.get_skills_catalog_prompt()
+        if skills_catalog:
+            system_prompt += "\n\n" + skills_catalog
+
         self.loaded_rules = loaded_rules
         self.mode = mode
         self.memory = ConversationMemory(system_prompt=system_prompt)
@@ -150,6 +156,10 @@ class AgentOrchestrator:
         base_prompt = get_system_prompt(target_mode)
         if hasattr(self, "loaded_rules") and self.loaded_rules:
             base_prompt += "\n\n" + "\n\n".join(self.loaded_rules)
+        if hasattr(self, "skill_registry") and self.skill_registry:
+            skills_catalog = self.skill_registry.get_skills_catalog_prompt()
+            if skills_catalog:
+                base_prompt += "\n\n" + skills_catalog
         self.memory.set_system_prompt(base_prompt)
 
     def set_state(self, new_state: AgentState):

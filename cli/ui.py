@@ -250,6 +250,7 @@ COMMANDS_META = {
     "/cancel": "Cancela la tarea o turno activo y devuelve el agente a IDLE",
     "/stop": "Detiene inmediatamente la generación o ejecución activa",
     "/artifacts": "Explora y consulta artefactos y planes persistentes",
+    "/skills": "Lista y gestiona habilidades dinámicas (Skills Runtime)",
     "/map": "Genera el mapa estructural del repositorio",
     "/status": "Muestra el estado del agente y métricas VRAM",
     "/sessions": "Lista el historial de sesiones SQLite",
@@ -266,7 +267,8 @@ COMMANDS_META = {
 
 COMPLETION_WORDS = list(COMMANDS_META.keys()) + [
     "/mode agent", "/mode ask", "/mode plan", "/mode review",
-    "/memory list", "/checkpoint create", "/checkpoint undo"
+    "/memory list", "/checkpoint create", "/checkpoint undo",
+    "/artifacts", "/skills", "/skills reload"
 ]
 
 
