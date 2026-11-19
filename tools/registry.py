@@ -999,7 +999,19 @@ def execute_tool(name: str, arguments: Any) -> str:
     Ejecuta una herramienta por nombre validando y normalizando sus argumentos.
     """
     if name not in TOOL_HANDLERS:
-        return f"Error: La herramienta '{name}' no existe en el catálogo registrado."
+        name_lower = name.lower()
+        if "instruction" in name_lower or "agent" in name_lower:
+            return (
+                f"Error: La herramienta '{name}' no existe en el catálogo registrado.\n"
+                f"• Si deseas leer las instrucciones del repositorio o proyecto, usa 'read_file(path=\"README.md\")'.\n"
+                f"• Si el agente está en modo ASK, está TERMINANTEMENTE PROHIBIDO crear archivos con 'write_file'. Responde la consulta inspeccionando el código existente con 'read_file'."
+            )
+        valid_tools = ", ".join(sorted(TOOL_HANDLERS.keys())[:15])
+        return (
+            f"Error: La herramienta '{name}' no existe en el catálogo registrado.\n"
+            f"• Herramientas válidas disponibles: {valid_tools}...\n"
+            f"• Si deseas inspeccionar código o archivos, utiliza 'read_file' o 'search_codebase'. NUNCA intentes crear archivos con 'write_file' para suplir una herramienta inexistente."
+        )
 
     handler = TOOL_HANDLERS[name]
 

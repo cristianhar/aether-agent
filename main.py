@@ -353,8 +353,10 @@ def main():
         return
 
     # Inicialización de historial persistente y auto-completado por Tab
+    from agent.context import get_workspace_file_mentions, resolve_at_file_mentions
+    workspace_mentions = get_workspace_file_mentions(Path.cwd())
     cli_completer = WordCompleter(
-        COMPLETION_WORDS,
+        COMPLETION_WORDS + workspace_mentions,
         meta_dict=COMMANDS_META,
         ignore_case=True,
         WORD=True,
@@ -684,6 +686,18 @@ Para controlar tu desarrollo por voz en paralelo con AETHER:
         if not orchestrator.check_ollama_alive():
             console.print("[bold red]❌ Error: Ollama no está en ejecución. Inícialo con 'ollama serve'.[/bold red]")
             continue
+
+        # Resolución y confirmación visual de menciones @archivo
+        expanded_input, attached_files = resolve_at_file_mentions(user_input)
+        if attached_files:
+            for af in attached_files:
+                try:
+                    rel_p = af.relative_to(Path.cwd()).as_posix()
+                except Exception:
+                    rel_p = af.name
+                line_cnt = len(af.read_text(encoding="utf-8", errors="replace").splitlines())
+                console.print(f"  [dim]📎 Archivo adjuntado:[/] [bold cyan]{rel_p}[/bold cyan] [dim]({line_cnt} líneas)[/dim]")
+            user_input = expanded_input
 
         # Ejecutar bucle ReAct
         with console.status("[bold cyan]AETHER pensando y ejecutando herramientas...[/bold cyan]", spinner="dots"):

@@ -678,6 +678,16 @@ class AgentOrchestrator:
             pass
 
         self.set_state(AgentState.RUNNING)
+
+        # Expansión automática de menciones @archivo si el prompt contiene @
+        if "@" in user_prompt:
+            try:
+                from agent.context import resolve_at_file_mentions
+                expanded_prompt, _ = resolve_at_file_mentions(user_prompt)
+                user_prompt = expanded_prompt
+            except Exception:
+                pass
+
         self.memory.add_user_message(user_prompt)
         self.session_manager.save_message(self.session_id, current_turn, role="user", content=user_prompt)
 
