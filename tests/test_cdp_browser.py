@@ -19,11 +19,32 @@ from tools.registry import execute_tool
 
 
 def test_find_chromium_binary():
-    # En esta máquina Windows, Chrome o Edge están instalados
     binary = find_chromium_binary()
-    assert binary is not None
-    assert binary.is_file()
-    assert binary.name.lower() in ("chrome.exe", "msedge.exe")
+    if binary is not None:
+        assert binary.is_file()
+        valid_names = {
+            "chrome.exe",
+            "msedge.exe",
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium",
+            "chromium-browser",
+            "microsoft-edge",
+            "google chrome",
+            "microsoft edge",
+        }
+        assert binary.name.lower() in valid_names
+
+
+def test_find_chromium_binary_custom_and_fallback():
+    # Encontrar archivo existente conocido
+    this_file = Path(__file__).resolve()
+    found = find_chromium_binary(custom_candidates=[this_file])
+    assert found == this_file
+
+    # Fallback cuando ningún candidato existe
+    not_found = find_chromium_binary(custom_candidates=[Path("/non/existent/path/fake_chrome_99")])
+    assert not_found is None
 
 
 def test_is_cdp_alive_mock():

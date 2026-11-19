@@ -21,8 +21,14 @@ import urllib.parse
 import urllib.request
 
 
-def find_chromium_binary() -> Optional[Path]:
+def find_chromium_binary(custom_candidates: Optional[List[Path]] = None) -> Optional[Path]:
     """Localiza el binario ejecutable de Google Chrome o Microsoft Edge en el sistema."""
+    if custom_candidates is not None:
+        for p in custom_candidates:
+            if p.is_file():
+                return p
+        return None
+
     system = platform.system()
 
     if system == "Windows":
