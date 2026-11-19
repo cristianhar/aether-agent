@@ -567,7 +567,7 @@ def main():
             if len(parts) > 1:
                 target_mode = parts[1].lower().strip()
                 if target_mode in ["agent", "ask", "plan", "review"]:
-                    orchestrator.hooks.set_mode(target_mode)
+                    orchestrator.set_mode(target_mode)
                     mode_colors = {"agent": "green", "ask": "yellow", "plan": "cyan", "review": "magenta"}
                     mode_desc = {
                         "agent": "Modo AGENT: Plenos poderes de creación, edición y ejecución autónoma.",
@@ -584,7 +584,7 @@ def main():
 
         elif cmd == "/plan":
             plan_goal = user_input[len(user_input.split()[0]):].strip()
-            orchestrator.hooks.set_mode("plan")
+            orchestrator.set_mode("plan")
             console.print("[bold cyan]🧭 Modo PLAN activado (Planificación Arquitectónica).[/bold cyan]")
 
             if not plan_goal:

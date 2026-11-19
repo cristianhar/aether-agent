@@ -17,13 +17,13 @@ import httpx
 from agent.hooks import HookManager
 from agent.memory import ConversationMemory
 from agent.permissions import PermissionDecision, PermissionEngine, PermissionRequest
-from agent.prompts import SYSTEM_PROMPT
+from agent.prompts import SYSTEM_PROMPT, get_system_prompt
 from agent.safety import check_command_safety
 from agent.session import SessionManager
 from agent.state import AgentState, CancellationToken
 from agent.telemetry import TelemetryLogger
 from tools.base import PermissionLevel, ToolCategory
-from tools.registry import TOOLS_SCHEMA, execute_tool
+from tools.registry import TOOLS_SCHEMA, execute_tool, get_tools_schema_for_mode
 
 
 def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
@@ -149,6 +149,8 @@ class AgentOrchestrator:
         if loaded_rules:
             system_prompt += "\n\n" + "\n\n".join(loaded_rules)
 
+        self.loaded_rules = loaded_rules
+        self.mode = "agent"
         self.memory = ConversationMemory(system_prompt=system_prompt)
         self.hooks = HookManager(mode="agent")
         self.permissions = permission_engine or PermissionEngine()
@@ -166,6 +168,18 @@ class AgentOrchestrator:
         self.on_tool_result = on_tool_result
         self.on_state_change = on_state_change
         self.confirm_callback = confirm_callback
+
+    def set_mode(self, mode: str):
+        """
+        Cambia el modo operativo adaptando hooks, prompt del sistema y herramientas disponibles.
+        """
+        target_mode = (mode or "agent").lower().strip()
+        self.mode = target_mode
+        self.hooks.set_mode(target_mode)
+        base_prompt = get_system_prompt(target_mode)
+        if hasattr(self, "loaded_rules") and self.loaded_rules:
+            base_prompt += "\n\n" + "\n\n".join(self.loaded_rules)
+        self.memory.set_system_prompt(base_prompt)
 
     def set_state(self, new_state: AgentState):
         """Actualiza el estado formal del agente y notifica a observadores."""
@@ -750,7 +764,7 @@ class AgentOrchestrator:
                 }
             }
             if not plan_completed_in_turn:
-                payload["tools"] = TOOLS_SCHEMA
+                payload["tools"] = get_tools_schema_for_mode(self.hooks.mode)
 
             content = ""
             tool_calls = []

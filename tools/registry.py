@@ -1128,3 +1128,71 @@ def execute_tools_parallel(calls: List[tuple], max_workers: int = 4) -> List[str
             results[idx] = f.result()
     return [str(r) for r in results]
 
+
+# Herramientas permitidas por modo operativo para optimización de tokens en VRAM
+ASK_MODE_TOOL_NAMES = {
+    "read_file",
+    "list_directory",
+    "get_repo_map",
+    "get_file_outline",
+    "search_codebase",
+    "grep_search",
+    "get_project_instructions",
+    "search_memory",
+    "list_memories",
+    "get_hardware_vram_status",
+    "search_web",
+    "fetch_web_page",
+    "get_git_status",
+    "get_git_diff",
+    "find_definition",
+    "find_references",
+    "get_dependencies",
+    "list_mcp_tools",
+}
+
+PLAN_MODE_TOOL_NAMES = {
+    "get_repo_map",
+    "get_file_outline",
+    "read_file",
+    "list_directory",
+    "search_codebase",
+    "grep_search",
+    "update_plan",
+    "get_plan",
+    "search_memory",
+    "list_memories",
+    "get_project_instructions",
+    "search_web",
+    "fetch_web_page",
+    "get_git_status",
+}
+
+REVIEW_MODE_TOOL_NAMES = {
+    "get_git_diff",
+    "get_git_status",
+    "read_file",
+    "get_file_outline",
+    "search_codebase",
+    "grep_search",
+    "get_diagnostics",
+    "run_tests",
+    "request_approval",
+}
+
+
+def get_tools_schema_for_mode(mode: str = "agent") -> List[Dict[str, Any]]:
+    """
+    Filtra dinámicamente el esquema de herramientas expuesto a Ollama según el modo operativo.
+    Reduce drásticamente el consumo de tokens y previene la confusión de herramientas en LLMs locales.
+    """
+    mode_clean = (mode or "agent").lower().strip()
+    if mode_clean == "ask":
+        return [t for t in TOOLS_SCHEMA if t.get("function", {}).get("name") in ASK_MODE_TOOL_NAMES]
+    elif mode_clean == "plan":
+        return [t for t in TOOLS_SCHEMA if t.get("function", {}).get("name") in PLAN_MODE_TOOL_NAMES]
+    elif mode_clean == "review":
+        return [t for t in TOOLS_SCHEMA if t.get("function", {}).get("name") in REVIEW_MODE_TOOL_NAMES]
+    return TOOLS_SCHEMA
+
+

@@ -14,6 +14,14 @@ class ConversationMemory:
             {"role": "system", "content": self.system_prompt}
         ]
 
+    def set_system_prompt(self, new_system_prompt: str):
+        """Actualiza el prompt del sistema dinámicamente según el modo operativo."""
+        self.system_prompt = new_system_prompt
+        if self.messages and self.messages[0].get("role") == "system":
+            self.messages[0]["content"] = new_system_prompt
+        else:
+            self.messages.insert(0, {"role": "system", "content": new_system_prompt})
+
     def add_user_message(self, content: str):
         self.messages.append({"role": "user", "content": content})
         self._trim_if_needed()

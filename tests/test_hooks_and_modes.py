@@ -193,3 +193,87 @@ def test_cli_tab_completion_commands():
     assert "/mode review" in main.COMPLETION_WORDS
 
 
+def test_dynamic_system_prompts_per_mode():
+    from agent.prompts import get_system_prompt
+
+    # 1. Modo ask es ultra-ligero y puramente de lectura
+    ask_prompt = get_system_prompt("ask")
+    assert "Modo ASK (Solo Lectura)" in ask_prompt
+    assert "TERMINANTEMENTE PROHIBIDO modificar el código" in ask_prompt
+    assert "statistics.pstdev" not in ask_prompt  # No contiene bloat de desarrollo
+    assert len(ask_prompt) < 3000
+
+    # 2. Modo plan es para arquitectura
+    plan_prompt = get_system_prompt("plan")
+    assert "Modo PLAN" in plan_prompt
+    assert "update_plan" in plan_prompt
+    assert len(plan_prompt) < 3000
+
+    # 3. Modo review es para auditoría
+    review_prompt = get_system_prompt("review")
+    assert "Modo REVIEW" in review_prompt
+    assert "get_git_diff" in review_prompt
+    assert len(review_prompt) < 3000
+
+    # 4. Modo agent contiene el ciclo ReAct completo
+    agent_prompt = get_system_prompt("agent")
+    assert "Agente Programador Autónomo" in agent_prompt
+    assert "FASE 4: BUCLE DE AUTO-SANACIÓN" in agent_prompt
+
+
+def test_dynamic_tool_schema_filtering_per_mode():
+    from tools.registry import get_tools_schema_for_mode
+
+    # 1. En modo ask, NO existen herramientas de escritura en disco
+    ask_tools = get_tools_schema_for_mode("ask")
+    ask_names = {t["function"]["name"] for t in ask_tools}
+    assert "read_file" in ask_names
+    assert "list_directory" in ask_names
+    assert "get_file_outline" in ask_names
+    assert "write_file" not in ask_names
+    assert "edit_file" not in ask_names
+    assert "delete_file" not in ask_names
+    assert "create_checkpoint" not in ask_names
+
+    # 2. En modo plan, solo herramientas de diseño y update_plan
+    plan_tools = get_tools_schema_for_mode("plan")
+    plan_names = {t["function"]["name"] for t in plan_tools}
+    assert "update_plan" in plan_names
+    assert "get_repo_map" in plan_names
+    assert "write_file" not in plan_names
+
+    # 3. En modo review, diffs y diagnostics
+    review_tools = get_tools_schema_for_mode("review")
+    review_names = {t["function"]["name"] for t in review_tools}
+    assert "get_git_diff" in review_names
+    assert "run_tests" in review_names
+    assert "delete_file" not in review_names
+
+    # 4. En modo agent, catálogo completo
+    agent_tools = get_tools_schema_for_mode("agent")
+    agent_names = {t["function"]["name"] for t in agent_tools}
+    assert "write_file" in agent_names
+    assert "edit_file" in agent_names
+
+
+def test_orchestrator_set_mode_switches_prompt_and_memory():
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator()
+    assert orchestrator.mode == "agent"
+    assert "Agente Programador Autónomo" in orchestrator.memory.messages[0]["content"]
+
+    # Cambiar a ASK
+    orchestrator.set_mode("ask")
+    assert orchestrator.mode == "ask"
+    assert orchestrator.hooks.mode == "ask"
+    assert "Modo ASK (Solo Lectura)" in orchestrator.memory.messages[0]["content"]
+    assert "write_file" not in orchestrator.memory.messages[0]["content"]
+
+    # Cambiar a PLAN
+    orchestrator.set_mode("plan")
+    assert orchestrator.mode == "plan"
+    assert orchestrator.hooks.mode == "plan"
+    assert "Modo PLAN" in orchestrator.memory.messages[0]["content"]
+
+
+
