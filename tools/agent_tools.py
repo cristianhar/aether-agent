@@ -29,7 +29,7 @@ def update_plan(
     plan_steps: Optional[List[str]] = None,
     current_step: int = 1,
     acceptance_criteria: Optional[List[str]] = None,
-    is_completed: bool = False,
+    is_completed: Any = False,
 ) -> str:
     """
     Superpoder: Actualiza el plan de ejecución y criterios de aceptación visibles para el usuario.
@@ -51,7 +51,8 @@ def update_plan(
             else:
                 plan_steps = ["Tarea general de usuario"]
 
-    completed = is_completed or (len(plan_steps) > 0 and current_step > len(plan_steps))
+    is_comp_bool = is_completed is True or str(is_completed).strip().lower() in ("true", "1", "yes")
+    completed = is_comp_bool or (len(plan_steps) > 0 and current_step > len(plan_steps))
 
     # Verificación de integridad de archivos requeridos antes de permitir completar el plan
     if completed:

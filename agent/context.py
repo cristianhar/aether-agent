@@ -77,14 +77,20 @@ def resolve_at_file_mentions(
         base_dir = Path.cwd()
 
     at_tokens = re.findall(r"@([a-zA-Z0-9_\-\./\\]+)", prompt)
-    if not at_tokens:
+    direct_file_tokens = re.findall(
+        r"\b([a-zA-Z0-9_\-\./\\]+\.(?:py|js|ts|jsx|tsx|json|md|html|css|txt|yaml|yml|sql|rs|go|c|cpp|h))\b",
+        prompt,
+        flags=re.IGNORECASE
+    )
+    all_tokens = list(dict.fromkeys(at_tokens + direct_file_tokens))
+    if not all_tokens:
         return prompt, []
 
     attached_files: List[Path] = []
     context_blocks: List[str] = []
     clean_prompt = prompt
 
-    for token in at_tokens:
+    for token in all_tokens:
         matched_file = find_matching_file(token, base_dir)
         if matched_file and matched_file not in attached_files:
             attached_files.append(matched_file)
@@ -97,10 +103,11 @@ def resolve_at_file_mentions(
                     rel_path = matched_file.name
 
                 ext = matched_file.suffix.lstrip(".") or "text"
+                via_tag = f" VÍA @{token}" if token in at_tokens else ""
 
                 if len(lines) <= 120 and len(content) <= 5000:
                     block = (
-                        f"📄 [CONTEXTO ADJUNTO VÍA @{token} ({rel_path})]:\n"
+                        f"📄 [CONTEXTO ADJUNTO{via_tag} ({rel_path})]:\n"
                         f"```{ext}\n{content}\n```"
                     )
                 else:
@@ -114,14 +121,15 @@ def resolve_at_file_mentions(
                             outline_str = ""
 
                     block = (
-                        f"📄 [CONTEXTO ESTRUCTURADO DE @{token} ({rel_path} - {len(lines)} líneas)]:\n"
+                        f"📄 [CONTEXTO ESTRUCTURADO{via_tag} ({rel_path} - {len(lines)} líneas)]:\n"
                         f"```{ext}\n{header}\n# ... (código truncado para preservar tokens de contexto) ...\n```"
                         f"{outline_str}"
                     )
                 context_blocks.append(block)
 
-                # Reemplazar @token por la ruta relativa en el prompt del usuario
-                clean_prompt = clean_prompt.replace(f"@{token}", rel_path)
+                # Reemplazar @token por la ruta relativa en el prompt del usuario si venía con @
+                if f"@{token}" in clean_prompt:
+                    clean_prompt = clean_prompt.replace(f"@{token}", rel_path)
             except Exception:
                 pass
 

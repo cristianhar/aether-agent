@@ -232,6 +232,28 @@ class AgentOrchestrator:
             except Exception:
                 pass
 
+        # 1.5 Bloques markdown de diff ```diff ... ```
+        diff_blocks = re.findall(r"```diff\s*([\s\S]*?)\s*```", content)
+        for d in diff_blocks:
+            file_m = re.search(r"^\+\+\+\s+(?:b/)?([a-zA-Z0-9_\-\./\\]+)", d, re.MULTILINE)
+            if not file_m:
+                file_m = re.search(r"^---\s+(?:a/)?([a-zA-Z0-9_\-\./\\]+)", d, re.MULTILINE)
+            if file_m:
+                d_file = file_m.group(1).split()[0].strip()
+                minus_lines = [l[1:] for l in d.splitlines() if l.startswith("-") and not l.startswith("---")]
+                plus_lines = [l[1:] for l in d.splitlines() if l.startswith("+") and not l.startswith("+++")]
+                if minus_lines and plus_lines:
+                    extracted.append({
+                        "function": {
+                            "name": "edit_file",
+                            "arguments": {
+                                "path": d_file,
+                                "target": "\n".join(minus_lines),
+                                "replacement": "\n".join(plus_lines)
+                            }
+                        }
+                    })
+
         if extracted:
             return extracted
 
@@ -403,6 +425,12 @@ class AgentOrchestrator:
         5. Cae en un bucle alternante oscilante (ping-pong) entre dos herramientas diferentes.
         6. Repite exactamente la misma edición que no produjo cambios o no resolvió el fallo.
         """
+        if not isinstance(args, dict):
+            if isinstance(args, list) and args and isinstance(args[0], dict):
+                args = args[0]
+            else:
+                args = {}
+
         passive_tools = {
             "read_file", "list_directory", "search_codebase", "grep_search", "grep", "get_file_outline",
             "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
@@ -433,8 +461,13 @@ class AgentOrchestrator:
                     "• ACCIÓN OBLIGATORIA: Revisa la solicitud inicial del usuario e implementa ÚNICAMENTE los archivos especificados en la tarea."
                 )
 
-        # Regla Anti-Bucle de Inspección Pasiva (Prevenir bucles repetitivos de read_file / get_file_outline)
-        if tool_name in ["read_file", "get_file_outline"]:
+        # Regla Anti-Bucle de Inspección Pasiva (Prevenir bucles repetitivos de read_file / get_git_diff / etc.)
+        if tool_name in ["read_file", "get_file_outline", "get_git_diff", "get_git_status", "get_repo_map", "list_directory"]:
+            if last_test_exit_code == 0:
+                return True, (
+                    "⛔ [COMPLETION GUARD]: Todas las pruebas unitarias ya pasaron exitosamente (Exit code 0) "
+                    "y los archivos requeridos están completos en disco. Concluye tu turno ahora resumiendo la solución para el usuario."
+                )
             target_path_str = str(args.get("path", "") or "")
             if target_path_str and action_history:
                 target_base = Path(target_path_str).name
@@ -477,7 +510,16 @@ class AgentOrchestrator:
                         if p_disk.is_file():
                             curr_c = p_disk.read_text(encoding="utf-8", errors="replace")
                             if curr_c.strip() != new_c.strip():
-                                is_genuine_mutation = True
+                                stem = Path(target_path_str).stem
+                                if not stem.startswith("test_"):
+                                    expected_test = f"test_{stem}.py"
+                                    if expected_test in user_prompt and not (Path.cwd() / expected_test).is_file():
+                                        consecutive_writes = sum(1 for a in action_history[-3:] if a.startswith(f"write_file:{target_path_str}"))
+                                        is_genuine_mutation = consecutive_writes < 1
+                                    else:
+                                        is_genuine_mutation = True
+                                else:
+                                    is_genuine_mutation = True
                         else:
                             is_genuine_mutation = True
                     except Exception:
@@ -557,17 +599,31 @@ class AgentOrchestrator:
                                                 f"• NUNCA inventes nombres de archivos no pedidos. Implementa '{expected_test_file}'."
                                             )
                                 else:
-                                    prompt_test_files = re.findall(r"['\"](test_[a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
-                                    fallback_stem = target_file_obj.stem if target_file_obj else "componente"
-                                    test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else f"'test_{fallback_stem}.py'"
+                                    prompt_test_files = re.findall(r"\b(test_[a-zA-Z0-9_\-\.]+\.py)\b", user_prompt)
+                                    prompt_src_files = [f for f in re.findall(r"\b([a-zA-Z0-9_\-\.]+\.py)\b", user_prompt) if not f.startswith("test_")]
+                                    missing_src = [f for f in prompt_src_files if not (Path.cwd() / f).is_file()]
+
                                     if tool_name == "update_plan":
                                         cycle_hint = (
                                             "• Ya actualizaste el plan anteriormente con este mismo estado. "
                                             "Avanza a la implementación del siguiente paso o concluye el turno si el plan fue completado."
                                         )
+                                    elif missing_src:
+                                        target_src = missing_src[0]
+                                        cycle_hint = (
+                                            f"• El archivo solicitado '{target_src}' AÚN NO HA SIDO CREADO en el disco.\n"
+                                            f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{target_src}\", content=...)' para implementarlo.\n"
+                                            f"• NO vuelvas a llamar a '{tool_name}' sin haber creado el código fuente primero."
+                                        )
+                                    elif prompt_test_files and not (Path.cwd() / prompt_test_files[0]).is_file():
+                                        target_test = prompt_test_files[0]
+                                        cycle_hint = (
+                                            f"• El archivo de pruebas '{target_test}' aún no ha sido creado en el disco.\n"
+                                            f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{target_test}\", content=...)' para implementarlo.\n"
+                                            f"• NO vuelvas a llamar a '{tool_name}' sin avanzar en la tarea."
+                                        )
                                     else:
                                         cycle_hint = (
-                                            f"• La acción '{tool_name}' ya fue ejecutada sin cambios. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
                                             "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
                                             f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
                                         )
@@ -888,15 +944,25 @@ class AgentOrchestrator:
 
                 # Guardián de Cierre de Plan: Si se inició o actualizó un plan en este turno y aún no ha concluido
                 if plan_active_in_turn and not plan_completed_in_turn and iteration < self.max_iterations - 1:
-                    self.memory.add_assistant_message(content=content)
-                    plan_guard_hint = (
-                        "[SISTEMA AETHER - CIERRE DE PLAN REQUERIDO]: Has emitido una respuesta final pero el plan activo en '.aether/plans/plan_activo.md' "
-                        "aún no ha sido marcado como COMPLETADO con 'update_plan(..., is_completed=True)'.\n"
-                        "• Si todas las pruebas pasaron y los archivos pedidos fueron creados, tu OBLIGACIÓN es llamar a 'update_plan(plan_steps=..., is_completed=True)' para cerrar el plan.\n"
-                        "• Si aún falta implementar algún archivo o ejecutar tests, ejecuta la herramienta correspondiente ahora."
-                    )
-                    self.memory.add_user_message(content=plan_guard_hint)
-                    continue
+                    if last_test_exit_code == 0 and files_modified_in_turn:
+                        # Las pruebas ya pasaron exitosamente y los archivos pedidos fueron creados:
+                        # Cerramos el plan automáticamente para permitir que el agente concluya el turno limpiamente
+                        try:
+                            from tools.agent_tools import update_plan
+                            update_plan(is_completed=True)
+                        except Exception:
+                            pass
+                        plan_completed_in_turn = True
+                    else:
+                        self.memory.add_assistant_message(content=content)
+                        plan_guard_hint = (
+                            "[SISTEMA AETHER - CIERRE DE PLAN REQUERIDO]: Has emitido una respuesta final pero el plan activo en '.aether/plans/plan_activo.md' "
+                            "aún no ha sido marcado como COMPLETADO con 'update_plan(..., is_completed=True)'.\n"
+                            "• Si todas las pruebas pasaron y los archivos pedidos fueron creados, tu OBLIGACIÓN es llamar a 'update_plan(plan_steps=..., is_completed=True)' para cerrar el plan.\n"
+                            "• Si aún falta implementar algún archivo o ejecutar tests, ejecuta la herramienta correspondiente ahora."
+                        )
+                        self.memory.add_user_message(content=plan_guard_hint)
+                        continue
 
                 # Guardián de Pruebas Fallidas: Nunca permitir dar por completada la tarea si las pruebas ejecutadas fallaron
                 if last_test_exit_code is not None and last_test_exit_code != 0 and iteration < self.max_iterations - 1:
@@ -984,28 +1050,40 @@ class AgentOrchestrator:
                     self.memory.add_user_message(content=inspection_hint)
                     continue
 
-                # Guardián Anti-Pasividad: Si el usuario consultó por un archivo específico y el modelo pide pasivamente que se lo compartan
-                user_asked_for_file = any(w in prompt_lower for w in [
-                    "archivo", "archivos", "código", "codigo", "file", "files", ".py", ".js", ".ts", ".json", ".md", ".html", ".css"
-                ]) or "@" in user_prompt
-
+                # Guardián Anti-Pasividad: Si el modelo pide pasivamente que se le comparta el código o archivo
                 passive_file_begging = any(p in content.lower() for p in [
                     "comparte el código", "compartir el código", "comparte el archivo", "compartir el archivo",
                     "pásame el código", "pasame el contenido", "pásame el archivo", "pasame el archivo",
-                    "no tengo acceso al archivo", "puedes compartir el código", "puedes compartir el archivo",
+                    "no tengo acceso al archivo", "puedes compartir", "podrías compartir", "podrias compartir",
                     "envíame el código", "enviame el código", "envíame el archivo", "enviame el archivo",
                     "más detalles sobre el contenido del archivo", "proporcióname el código", "proporcioname el código",
-                    "proporcióname el archivo", "proporcioname el archivo"
+                    "proporciones el código", "proporcione el código", "necesito que me proporciones el código"
                 ])
-                if user_asked_for_file and not has_attached_context and passive_file_begging and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                if not has_attached_context and passive_file_begging and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
                     proactive_prompts_sent += 1
                     self.memory.add_assistant_message(content=content)
                     file_inspection_hint = (
                         "[SISTEMA AETHER - AUTO-INSPECCIÓN OBLIGATORIA]: NUNCA le pidas el archivo o código al usuario.\n"
-                        "• Eres un agente local autónomo con acceso directo al disco: tu deber es usar 'read_file' o 'get_file_outline' "
-                        "para leer e inspeccionar tú mismo el archivo en disco y responder técnicamente al usuario."
+                        "• Eres un agente local autónomo con acceso directo al disco: si necesitas leer un archivo, "
+                        "usa 'read_file(path=...)' o 'get_file_outline(path=...)' directamente para inspeccionarlo tú mismo."
                     )
                     self.memory.add_user_message(content=file_inspection_hint)
+                    continue
+
+                modification_requested = any(k in prompt_lower for k in [
+                    "modifica", "modificar", "cambia", "cambiar", "actualiza", "actualizar",
+                    "corrige", "corregir", "edita", "editar", "reemplaza", "reemplazar"
+                ])
+                if modification_requested and not is_ask_mode and not files_modified_in_turn and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                    proactive_prompts_sent += 1
+                    self.memory.add_assistant_message(content=content)
+                    mod_hint = (
+                        "[SISTEMA AETHER - MODIFICACIÓN DE CÓDIGO REQUERIDA]: El usuario solicitó modificar código.\n"
+                        "• Está TERMINANTEMENTE PROHIBIDO responder únicamente con explicaciones o diffs en texto markdown.\n"
+                        "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a 'edit_file(path=..., target=..., replacement=...)' "
+                        "o 'write_file(path=..., content=...)' para aplicar la modificación."
+                    )
+                    self.memory.add_user_message(content=mod_hint)
                     continue
 
                 if is_code_task:
@@ -1090,6 +1168,7 @@ class AgentOrchestrator:
                     parallel_results[idx] = res
 
             # Procesar cada herramienta solicitada
+            mutated_paths_in_batch = set()
             for idx, tc in enumerate(tool_calls):
                 if cancellation_token and cancellation_token.is_cancelled:
                     self.set_state(AgentState.CANCELLED)
@@ -1105,6 +1184,35 @@ class AgentOrchestrator:
                         args = json.loads(args)
                     except Exception:
                         args = {}
+
+                if not isinstance(args, dict):
+                    if isinstance(args, list) and args and isinstance(args[0], dict):
+                        args = args[0]
+                    else:
+                        args = {}
+
+                # Normalización inmediata de alias de herramientas y argumentos
+                from tools.registry import TOOL_ALIASES
+                tool_name = TOOL_ALIASES.get(tool_name, tool_name)
+
+                if "path" not in args:
+                    for p_alias in ["file_path", "filepath", "filename", "file"]:
+                        if p_alias in args:
+                            args["path"] = args.pop(p_alias)
+                            break
+
+                if "content" not in args:
+                    for c_alias in ["text", "code", "body"]:
+                        if c_alias in args and tool_name in ["write_file", "edit_file"]:
+                            args["content"] = args.pop(c_alias)
+                            break
+
+                if tool_name in ["write_file", "edit_file", "apply_patch"]:
+                    t_path = args.get("path")
+                    if t_path:
+                        if t_path in mutated_paths_in_batch:
+                            continue
+                        mutated_paths_in_batch.add(t_path)
 
                 category, perm_level = get_tool_metadata(tool_name)
 
@@ -1164,10 +1272,15 @@ class AgentOrchestrator:
                     recent_failed_tools.append(tool_name)
                     last_failed_tool_key = tool_call_key
                     self._record_and_feed_result(tool_name, args, breaker_msg, False, 0.0)
-                    if "COMPLETION GUARD" in breaker_msg:
-                        # Si el plan ya está formalmente completado y verificado, y el modelo sigue invocando herramientas de mutación,
+                    if "COMPLETION GUARD" in breaker_msg or (tool_name == "update_plan" and last_test_exit_code == 0):
+                        # Si el plan ya está formalmente completado y verificado, o las pruebas ya pasaron con éxito,
                         # concluimos el turno limpiamente sin penalizar ni ciclar
-                        final_answer = content or "Tarea completada exitosamente según el plan verificado."
+                        clean_answer = re.sub(r"```[\s\S]*?```|\{[\s\S]*?\}", "", content).strip()
+                        is_junk = len(clean_answer) < 20 or re.fullmatch(r"[\s<>{}\$\'\"\\=`]+", clean_answer) is not None
+                        if is_junk:
+                            final_answer = "He implementado la solución solicitada y verificado exitosamente que todas las pruebas unitarias pasen con código 0."
+                        else:
+                            final_answer = clean_answer
                         self.memory.add_assistant_message(content=final_answer)
                         self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
                         self.set_state(AgentState.COMPLETED)
@@ -1175,11 +1288,14 @@ class AgentOrchestrator:
                     continue
 
                 if tool_name not in [
-                    "read_file", "list_directory", "search_codebase", "get_file_outline",
+                    "list_directory", "search_codebase",
                     "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
                     "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map"
                 ]:
-                    current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                    if tool_name == "update_plan":
+                        current_action_sig = f"update_plan:step_{args.get('current_step', '')}_{args.get('is_completed', '')}"
+                    else:
+                        current_action_sig = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
                     action_history.append(current_action_sig)
 
                 # 2. Evaluación de Motor de Permisos y Límites de Workspace
@@ -1300,7 +1416,7 @@ class AgentOrchestrator:
 
                 elif tool_name == "update_plan":
                     plan_active_in_turn = True
-                    if is_success and ("¡Todos los pasos del plan han sido completados" in tool_result or "🎉 COMPLETADO" in tool_result):
+                    if is_success and ("¡Todos los pasos del plan han sido completados" in tool_result or "🎉 COMPLETADO" in tool_result or args.get("is_completed") is True):
                         plan_completed_in_turn = True
 
                 elif tool_name in ["undo_checkpoint", "safe_undo_checkpoint"]:

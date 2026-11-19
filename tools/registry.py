@@ -196,55 +196,58 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "call_mcp_tool": call_mcp_tool_wrapper,
 }
 
+TOOL_ALIASES: Dict[str, str] = {
+    # Análisis e inspección de código
+    "analyze_file": "get_file_outline",
+    "inspect_file": "get_file_outline",
+    "examine_file": "get_file_outline",
+    "inspect_code": "get_file_outline",
+    "get_outline": "get_file_outline",
+    # Lectura de archivos
+    "view_file": "read_file",
+    "show_file": "read_file",
+    "cat_file": "read_file",
+    "open_file": "read_file",
+    "get_file_content": "read_file",
+    # Listado de archivos / carpetas
+    "list_files": "list_directory",
+    "dir": "list_directory",
+    "ls": "list_directory",
+    "get_files": "list_directory",
+    "tree": "list_directory",
+    # Búsqueda
+    "grep": "search_codebase",
+    "find_code": "search_codebase",
+    "search_text": "search_codebase",
+    "search_files": "search_codebase",
+    # Ejecución de comandos
+    "exec": "run_command",
+    "execute_command": "run_command",
+    "bash": "run_command",
+    "sh": "run_command",
+    "terminal": "run_command",
+    # Instrucciones del repositorio
+    "get_repo_instructions": "get_project_instructions",
+    "get_agent_instructions": "get_project_instructions",
+    "repo_instructions": "get_project_instructions",
+    # Creación / edición de archivos
+    "create_file": "write_file",
+    "new_file": "write_file",
+    "save_file": "write_file",
+    "write_code": "write_file",
+    "create_code": "write_file",
+    "generate_code": "write_file",
+    # Tests
+    "run_test": "run_tests",
+    "test": "run_tests",
+    "pytest": "run_tests",
+}
+
 
 def execute_tool(name: str, arguments: Any) -> str:
     """
     Ejecuta una herramienta por nombre validando y normalizando sus argumentos.
     """
-    # Normalización de alias comunes emitidos por LLMs locales
-    TOOL_ALIASES = {
-        # Análisis e inspección de código
-        "analyze_file": "get_file_outline",
-        "inspect_file": "get_file_outline",
-        "examine_file": "get_file_outline",
-        "inspect_code": "get_file_outline",
-        "get_outline": "get_file_outline",
-        # Lectura de archivos
-        "view_file": "read_file",
-        "show_file": "read_file",
-        "cat_file": "read_file",
-        "open_file": "read_file",
-        "get_file_content": "read_file",
-        # Listado de archivos / carpetas
-        "list_files": "list_directory",
-        "dir": "list_directory",
-        "ls": "list_directory",
-        "get_files": "list_directory",
-        "tree": "list_directory",
-        # Búsqueda
-        "grep": "search_codebase",
-        "find_code": "search_codebase",
-        "search_text": "search_codebase",
-        "search_files": "search_codebase",
-        # Ejecución de comandos
-        "exec": "run_command",
-        "execute_command": "run_command",
-        "bash": "run_command",
-        "sh": "run_command",
-        "terminal": "run_command",
-        # Instrucciones del repositorio
-        "get_repo_instructions": "get_project_instructions",
-        "get_agent_instructions": "get_project_instructions",
-        "repo_instructions": "get_project_instructions",
-        # Creación / edición de archivos
-        "create_file": "write_file",
-        "new_file": "write_file",
-        "save_file": "write_file",
-        # Tests
-        "run_test": "run_tests",
-        "test": "run_tests",
-        "pytest": "run_tests",
-    }
     name = TOOL_ALIASES.get(name, name)
 
     if name not in TOOL_HANDLERS:
@@ -281,9 +284,16 @@ def execute_tool(name: str, arguments: Any) -> str:
                 arguments["path"] = arguments.pop(p_alias)
                 break
 
+    if name == "edit_file" and "target" not in arguments:
+        if "new_content" in arguments or "content" in arguments:
+            name = "write_file"
+            handler = TOOL_HANDLERS["write_file"]
+            if "new_content" in arguments:
+                arguments["content"] = arguments.pop("new_content")
+
     if "content" not in arguments:
-        for c_alias in ["text", "code", "body"]:
-            if c_alias in arguments and name in ["write_file", "create_file", "new_file", "save_file"]:
+        for c_alias in ["text", "code", "body", "new_content"]:
+            if c_alias in arguments and name in ["write_file", "create_file", "new_file", "save_file", "write_code"]:
                 arguments["content"] = arguments.pop(c_alias)
                 break
 
@@ -294,7 +304,7 @@ def execute_tool(name: str, arguments: Any) -> str:
                 break
 
     if "test_target" not in arguments:
-        for t_alias in ["target", "path", "file"]:
+        for t_alias in ["target", "path", "file", "target_file"]:
             if t_alias in arguments and name in ["run_tests", "pytest", "test", "test_runner"]:
                 arguments["test_target"] = arguments.pop(t_alias)
                 break
@@ -380,6 +390,9 @@ REVIEW_MODE_TOOL_NAMES = {
     "get_diagnostics",
     "run_tests",
     "request_approval",
+    "edit_file",
+    "write_file",
+    "apply_patch",
 }
 
 
