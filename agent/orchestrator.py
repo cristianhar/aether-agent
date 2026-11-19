@@ -41,7 +41,8 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
         "get_repo_map", "get_diagnostics", "get_process_status",
         "find_definition", "find_references", "get_dependencies", "get_hardware_vram_status",
         "list_mcp_tools", "delegate_research", "get_plan", "search_memory", "list_memories",
-        "conclude_turn", "finish_turn", "complete_task", "finish", "done"
+        "conclude_turn", "finish_turn", "complete_task", "finish", "done",
+        "browser_open", "browser_get_content", "browser_screenshot"
     ]:
         category = ToolCategory.FILESYSTEM if name in ["read_file", "cat", "view_file", "search_codebase", "grep_search", "grep", "list_directory"] else ToolCategory.CODE_INTELLIGENCE
         return category, PermissionLevel.READ_ONLY
@@ -55,7 +56,11 @@ def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
     if name in ["write_file", "create_file", "new_file", "save_file", "edit_file", "delete_file", "move_file", "apply_patch"]:
         return ToolCategory.FILESYSTEM, PermissionLevel.WORKSPACE_WRITE
 
-    if name in ["run_command", "exec", "execute_command", "bash", "sh", "terminal", "run_tests", "pytest", "test", "test_runner", "start_background_process", "cancel_process", "call_mcp_tool"]:
+    if name in [
+        "run_command", "exec", "execute_command", "bash", "sh", "terminal",
+        "run_tests", "pytest", "test", "test_runner", "start_background_process",
+        "cancel_process", "call_mcp_tool", "browser_click", "browser_type"
+    ]:
         return ToolCategory.EXECUTION, PermissionLevel.COMMAND_EXECUTE
 
     if name in ["create_checkpoint", "undo_checkpoint", "safe_checkpoint", "safe_undo_checkpoint", "get_git_diff", "get_git_status"]:

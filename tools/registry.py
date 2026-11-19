@@ -40,6 +40,13 @@ from tools.agent_tools import (
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
 from tools.mcp_client import list_mcp_tools, call_mcp_tool_wrapper
+from tools.cdp_browser import (
+    browser_open,
+    browser_get_content,
+    browser_click,
+    browser_type,
+    browser_screenshot,
+)
 
 # Esquemas de herramientas consolidados desde la arquitectura modular
 from tools.schemas import TOOLS_SCHEMA
@@ -212,6 +219,11 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "invoke_subagent": invoke_subagent_tool,
     "send_message": send_message_tool,
     "manage_subagents": manage_subagents_tool,
+    "browser_open": browser_open,
+    "browser_get_content": browser_get_content,
+    "browser_click": browser_click,
+    "browser_type": browser_type,
+    "browser_screenshot": browser_screenshot,
 }
 
 TOOL_ALIASES: Dict[str, str] = {
@@ -269,6 +281,14 @@ TOOL_ALIASES: Dict[str, str] = {
     "call_subagent": "invoke_subagent",
     "message_subagent": "send_message",
     "subagents": "manage_subagents",
+    # Navegador CDP
+    "open_browser": "browser_open",
+    "browse": "browser_open",
+    "open_url": "browser_open",
+    "get_page_content": "browser_get_content",
+    "click": "browser_click",
+    "type": "browser_type",
+    "screenshot": "browser_screenshot",
 }
 
 
@@ -402,6 +422,9 @@ ASK_MODE_TOOL_NAMES = {
     "find_references",
     "get_dependencies",
     "list_mcp_tools",
+    "browser_open",
+    "browser_get_content",
+    "browser_screenshot",
 }
 
 PLAN_MODE_TOOL_NAMES = {
@@ -427,6 +450,9 @@ PLAN_MODE_TOOL_NAMES = {
     "invoke_subagent",
     "send_message",
     "manage_subagents",
+    "browser_open",
+    "browser_get_content",
+    "browser_screenshot",
 }
 
 REVIEW_MODE_TOOL_NAMES = {

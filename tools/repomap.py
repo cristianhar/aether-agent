@@ -70,8 +70,10 @@ def generate_repo_map(root_dir: str = ".", max_files: int = 40) -> str:
     count = 0
 
     for current_dir, dirs, files in os.walk(root):
-        # Filtrar directorios ignorados
+        # Filtrar directorios ignorados y priorizar código fuente antes de tests/benchmarks
         dirs[:] = [d for d in dirs if d not in DEFAULT_IGNORED_DIRS and not d.startswith(".")]
+        source_priority = {"agent": 0, "tools": 1, "cli": 2, "bridge": 3, "src": 4}
+        dirs.sort(key=lambda d: (source_priority.get(d.lower(), 10), d.lower()))
 
         rel_dir = Path(current_dir).relative_to(root)
         if rel_dir == Path("."):
