@@ -916,6 +916,29 @@ class AgentOrchestrator:
                     or files_modified_in_turn
                 )
 
+                is_inspection_task = any(w in prompt_lower for w in [
+                    "archivo", "archivos", "carpeta", "carpetas", "directorio", "directorios",
+                    "raiz", "raíz", "estructura", "que hay", "qué hay", "lista ", "listar",
+                    "que tiene", "qué tiene", "contenido del proyecto", "elementos"
+                ])
+
+                # Guardián de Exploración Autónoma: Si el usuario pidió ver archivos y el modelo no los listó
+                inspection_tools_used = any(
+                    any(t in a for t in ["list_directory", "get_repo_map", "read_file", "search_codebase"])
+                    for a in action_history
+                )
+                if is_inspection_task and not inspection_tools_used and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                    proactive_prompts_sent += 1
+                    self.memory.add_assistant_message(content=content)
+                    inspection_hint = (
+                        "[SISTEMA AETHER - EXPLORACIÓN DE PROYECTO OBLIGATORIA]: El usuario solicitó conocer qué archivos o elementos existen en el proyecto.\n"
+                        "• Está TERMINANTEMENTE PROHIBIDO responder con evasivas, disculpas sobre MCP o preguntas pasivas.\n"
+                        "• ACCIÓN OBLIGATORIA: Tu respuesta en este turno DEBE SER DIRECTAMENTE una llamada a 'list_directory(path=\".\")' o 'get_repo_map()' "
+                        "para leer físicamente los archivos del disco e informar al usuario."
+                    )
+                    self.memory.add_user_message(content=inspection_hint)
+                    continue
+
                 if is_code_task:
                     if missing_requested_files and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
                         proactive_prompts_sent += 1

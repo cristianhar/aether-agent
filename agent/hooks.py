@@ -118,6 +118,14 @@ class HookManager:
                 "• CONCLUYE EL TURNO AHORA e informa al usuario en tu respuesta final el resumen de los hitos alcanzados."
             )
 
+        # Si se exploró el directorio o el repo map
+        if tool_name in ["list_directory", "get_repo_map"]:
+            result += (
+                "\n[HOOK POST-TOOL]: 📋 ¡Exploración completada con éxito!\n"
+                "• Ya tienes la lista real de archivos y carpetas en el resultado anterior.\n"
+                "• CONCLUYE EL TURNO AHORA respondiendo al usuario y detallando los archivos y carpetas encontrados. Está PROHIBIDO llamar a 'remember_fact' o repetir la exploración."
+            )
+
         # Si la salida de run_command indica fallo, inyectar alerta de auto-sanación
         if tool_name == "run_command" and ("Código de salida: 1" in result or "Traceback" in result or "FAILED" in result):
             if "EOFError" in result:

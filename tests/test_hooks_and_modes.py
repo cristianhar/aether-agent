@@ -105,6 +105,13 @@ def test_hooks_post_tool_use_plan_completed_guidance():
     assert "Plan completado y verificado en su totalidad" in out
 
 
+def test_hooks_post_tool_use_list_directory_guidance():
+    hooks = HookManager(mode="ask")
+    out = hooks.post_tool_use("list_directory", {"path": "."}, "Directorio: IDE/\n├── main.py")
+    assert "Exploración completada con éxito" in out
+    assert "CONCLUYE EL TURNO AHORA" in out
+
+
 def test_hooks_blocks_autonomous_git_add_commit():
     hooks = HookManager(mode="agent")
     allowed, reason = hooks.pre_tool_use("run_command", {"command": "git add -A"})

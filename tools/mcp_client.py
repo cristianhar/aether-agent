@@ -312,7 +312,11 @@ def list_mcp_tools() -> str:
     mgr = MCPServerManager()
     tools = mgr.list_all_tools()
     if not tools:
-        return "ℹ️ No hay servidores MCP conectados actualmente (configúralos en .aether/mcp_servers.json)."
+        return (
+            "ℹ️ No hay servidores MCP conectados actualmente (configúralos en .aether/mcp_servers.json).\n"
+            "• [AYUDA AUTOMÁTICA]: Si tu intención era consultar o listar los archivos o carpetas del proyecto local, "
+            "debes llamar a 'list_directory(path=\".\")' o 'get_repo_map()'."
+        )
     output = [f"🔌 **Herramientas MCP Descubiertas ({len(tools)} disponibles):**"]
     for t in tools:
         output.append(f"  • `{t.server_name}/{t.name}`: {t.description}")

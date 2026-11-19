@@ -177,7 +177,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_directory",
-            "description": "Muestra el árbol de carpetas y archivos del proyecto.",
+            "description": "Lista los archivos y carpetas del proyecto local o de un directorio específico (por ejemplo '.' para la raíz). Úsala obligatoriamente cuando el usuario pregunte qué archivos hay en la raíz o en una carpeta.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -797,7 +797,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_mcp_tools",
-            "description": "MCP Client: Descubre y lista todas las herramientas disponibles exportadas por servidores MCP configurados.",
+            "description": "MCP Client ÚNICAMENTE: Consulta herramientas externas en servidores MCP remotos. NUNCA uses esta herramienta para listar archivos, carpetas o código del proyecto local; para ver archivos del proyecto usa 'list_directory' o 'get_repo_map'.",
             "parameters": {
                 "type": "object",
                 "properties": {}
