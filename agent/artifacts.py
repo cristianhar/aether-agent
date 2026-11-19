@@ -31,6 +31,21 @@ def _slugify(text: str) -> str:
     return re.sub(r"[-\s]+", "_", clean)[:40] or "artifact"
 
 
+_ACTIVE_ARTIFACT_SESSION: Optional[str] = None
+
+
+def set_active_artifact_session(session_id: Optional[str]):
+    """Establece la sesión activa en contexto para asociar los artefactos creados."""
+    global _ACTIVE_ARTIFACT_SESSION
+    _ACTIVE_ARTIFACT_SESSION = session_id
+
+
+def get_active_artifact_session() -> str:
+    """Obtiene el identificador de sesión activo para artefactos."""
+    global _ACTIVE_ARTIFACT_SESSION
+    return _ACTIVE_ARTIFACT_SESSION or "default"
+
+
 class ArtifactManager:
     """
     Gestor central de artefactos persistentes de AETHER.
@@ -39,7 +54,7 @@ class ArtifactManager:
 
     def __init__(self, workspace_root: Optional[Path] = None, session_id: Optional[str] = None):
         self.workspace_root = (workspace_root or Path.cwd()).resolve()
-        self.session_id = session_id or "default"
+        self.session_id = session_id or get_active_artifact_session()
         self.artifacts_dir = self.workspace_root / ".aether" / "artifacts" / self.session_id
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 

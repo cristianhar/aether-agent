@@ -238,6 +238,13 @@ class AgentOrchestrator:
         except Exception:
             pass
 
+        # Vincular sesión activa para el gestor de artefactos
+        try:
+            from agent.artifacts import set_active_artifact_session
+            set_active_artifact_session(self.session_id)
+        except Exception:
+            pass
+
         self.set_state(AgentState.RUNNING)
 
         # Expansión automática de menciones @archivo si el prompt contiene @
