@@ -100,16 +100,25 @@ def resolve_at_file_mentions(
 
                 ext = matched_file.suffix.lstrip(".") or "text"
 
-                if len(lines) <= max_lines_full:
+                if len(lines) <= 120 and len(content) <= 5000:
                     block = (
                         f"📄 [CONTEXTO ADJUNTO VÍA @{token} ({rel_path})]:\n"
                         f"```{ext}\n{content}\n```"
                     )
                 else:
-                    truncated = "\n".join(lines[:max_lines_full])
+                    header = "\n".join(lines[:35])
+                    outline_str = ""
+                    if ext == "py":
+                        try:
+                            from tools.search_tools import get_file_outline
+                            outline_str = f"\n\nESQUEMA ESTRUCTURAL AST:\n{get_file_outline(str(matched_file))}"
+                        except Exception:
+                            outline_str = ""
+
                     block = (
-                        f"📄 [CONTEXTO ADJUNTO VÍA @{token} ({rel_path} - Primeras {max_lines_full} de {len(lines)} líneas)]:\n"
-                        f"```{ext}\n{truncated}\n...\n```"
+                        f"📄 [CONTEXTO ESTRUCTURADO DE @{token} ({rel_path} - {len(lines)} líneas)]:\n"
+                        f"```{ext}\n{header}\n# ... (código truncado para preservar tokens de contexto) ...\n```"
+                        f"{outline_str}"
                     )
                 context_blocks.append(block)
 
