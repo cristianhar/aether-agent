@@ -46,6 +46,17 @@ def handle_slash_command(
         console.print("[dim]Sesión finalizada. ¡Hasta pronto![/dim]")
         return False
 
+    # Cancelación de turno o tarea activa
+    elif cmd in ["/cancel", "/stop"]:
+        if hasattr(orchestrator, "cancel_active_turn"):
+            orchestrator.cancel_active_turn()
+        else:
+            if hasattr(orchestrator, "state"):
+                from agent.state import AgentState
+                orchestrator.state = AgentState.IDLE
+        console.print("[bold yellow]🛑 Turno o tarea cancelada. El agente está en reposo (IDLE) y listo para nuevas instrucciones.[/bold yellow]")
+        return True
+
     # Cambio de directorio de trabajo
     elif cmd == "/cd":
         target_dir = user_input[len(user_input.split()[0]):].strip()

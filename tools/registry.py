@@ -26,7 +26,8 @@ from tools.agent_tools import (
     get_project_instructions,
     remember_fact,
     search_memory,
-    list_memories
+    list_memories,
+    ask_question_tool,
 )
 from tools.code_intel import find_definition, find_references, get_dependencies
 from tools.vram_monitor import get_hardware_vram_status
@@ -185,6 +186,7 @@ TOOL_HANDLERS: Dict[str, Callable[..., Any]] = {
     "remember_fact": remember_fact,
     "search_memory": search_memory,
     "list_memories": list_memories,
+    "ask_question": ask_question_tool,
     "request_approval": request_approval,
     "get_project_instructions": get_project_instructions,
     "find_definition": find_definition,
@@ -241,6 +243,11 @@ TOOL_ALIASES: Dict[str, str] = {
     "run_test": "run_tests",
     "test": "run_tests",
     "pytest": "run_tests",
+    # Aclaración y preguntas interactivas
+    "ask_user": "ask_question",
+    "clarify_question": "ask_question",
+    "clarify_requirements": "ask_question",
+    "ask": "ask_question",
 }
 
 
@@ -385,6 +392,7 @@ PLAN_MODE_TOOL_NAMES = {
     "grep_search",
     "update_plan",
     "get_plan",
+    "ask_question",
     "search_memory",
     "list_memories",
     "get_project_instructions",

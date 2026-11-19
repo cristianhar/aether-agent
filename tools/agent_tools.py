@@ -356,3 +356,40 @@ def list_memories(category: Optional[str] = None) -> str:
 
     return "\n\n".join(lines)
 
+
+_ASK_QUESTION_CALLBACK: Optional[Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]]] = None
+
+
+def set_ask_question_callback(callback: Optional[Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]]]):
+    """Permite registrar un interceptor para responder preguntas interactivas (CLI o test mock)."""
+    global _ASK_QUESTION_CALLBACK
+    _ASK_QUESTION_CALLBACK = callback
+
+
+def ask_question_tool(questions: Any) -> str:
+    """
+    Herramienta que formula preguntas interactivas de opción múltiple al usuario para aclarar requisitos.
+    """
+    if isinstance(questions, str):
+        try:
+            questions = json.loads(questions)
+        except Exception:
+            questions = [{"question": questions, "options": ["(Recommended) Sí", "No"], "is_multi_select": False}]
+
+    if isinstance(questions, dict):
+        if "questions" in questions:
+            questions = questions["questions"]
+        else:
+            questions = [questions]
+
+    if not isinstance(questions, list):
+        return json.dumps({"error": "El parámetro 'questions' debe ser una lista de preguntas con opciones."})
+
+    if _ASK_QUESTION_CALLBACK:
+        res = _ASK_QUESTION_CALLBACK(questions)
+    else:
+        from cli.ui import prompt_interactive_question
+        res = prompt_interactive_question(questions)
+
+    return json.dumps({"status": "success", "answers": res}, ensure_ascii=False)
+

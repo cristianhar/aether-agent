@@ -131,6 +131,14 @@ class AgentOrchestrator:
         self.on_tool_result = on_tool_result
         self.on_state_change = on_state_change
         self.confirm_callback = confirm_callback
+        self.ask_question_callback: Optional[Callable] = None
+        self.active_token: Optional[CancellationToken] = None
+
+    def cancel_active_turn(self, reason: str = "Operación cancelada por el usuario."):
+        """Cancela de forma segura el turno o tarea activa y devuelve el agente a IDLE."""
+        if self.active_token:
+            self.active_token.cancel(reason)
+        self.state = AgentState.IDLE
 
     def set_mode(self, mode: str):
         """

@@ -7,6 +7,49 @@ from typing import Any, Dict, List
 AGENTIC_TOOLS: List[Dict[str, Any]] = [
     {
         "function": {
+            "description": "Formula una o más preguntas interactivas de opción múltiple al usuario para aclarar requisitos técnicos o decisiones clave de diseño y espera su selección.",
+            "name": "ask_question",
+            "parameters": {
+                "properties": {
+                    "questions": {
+                        "description": "Lista de preguntas estructuradas con sus opciones.",
+                        "items": {
+                            "properties": {
+                                "is_multi_select": {
+                                    "description": "Indica si el usuario puede seleccionar múltiples opciones (True) o solo una (False).",
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "description": "Lista de opciones disponibles. La primera opción debe ser la recomendada con el prefijo '(Recommended)'.",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "type": "array"
+                                },
+                                "question": {
+                                    "description": "La pregunta clara y directa que se presentará al usuario.",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "question",
+                                "options"
+                            ],
+                            "type": "object"
+                        },
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "questions"
+                ],
+                "type": "object"
+            }
+        },
+        "type": "function"
+    },
+    {
+        "function": {
             "description": "Actualiza la lista de pasos, el paso actual en progreso y los criterios de aceptación para resolver la tarea.",
             "name": "update_plan",
             "parameters": {

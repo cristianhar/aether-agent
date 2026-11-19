@@ -12,6 +12,7 @@ from prompt_toolkit.history import FileHistory, InMemoryHistory
 from prompt_toolkit.shortcuts import CompleteStyle
 
 from agent.orchestrator import AgentOrchestrator
+from agent.state import AgentState, CancellationToken
 from agent.context import AetherCLICompleter, resolve_at_file_mentions
 from cli.ui import (
     console,
@@ -99,20 +100,26 @@ def main():
                 user_input = session.prompt(HTML("<b><ansicyan>AETHER ❯ </ansicyan></b>")).strip()
             else:
                 user_input = input("AETHER ❯ ").strip()
-        except (KeyboardInterrupt, EOFError):
+        except KeyboardInterrupt:
+            console.print("\n[dim](Para salir de AETHER usa /exit o presiona Ctrl+D)[/dim]")
+            continue
+        except EOFError:
             console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
             break
         except Exception:
             try:
                 user_input = input("AETHER ❯ ").strip()
-            except (KeyboardInterrupt, EOFError):
+            except KeyboardInterrupt:
+                console.print("\n[dim](Para salir de AETHER usa /exit o presiona Ctrl+D)[/dim]")
+                continue
+            except EOFError:
                 console.print("\n[dim]Saliendo de AETHER IDE... ¡Hasta pronto![/dim]")
                 break
 
         if not user_input:
             continue
 
-        # Procesar comandos slash (/help, /plan, /cd, /mode, /undo, /exit, etc.)
+        # Procesar comandos slash (/help, /plan, /cd, /mode, /undo, /cancel, /exit, etc.)
         slash_result = handle_slash_command(user_input, orchestrator, console)
         if slash_result is False:
             break
@@ -136,11 +143,19 @@ def main():
                 console.print(f"  [dim]📎 Archivo adjuntado:[/] [bold cyan]{rel_p}[/bold cyan] [dim]({line_cnt} líneas)[/dim]")
             user_input = expanded_input
 
-        # Ejecutar bucle ReAct
-        with console.status("[bold cyan]AETHER pensando y ejecutando herramientas...[/bold cyan]", spinner="dots"):
-            answer = orchestrator.run_turn(user_input)
-
-        render_response(answer)
+        # Ejecutar bucle ReAct con soporte de interrupción/cancelación limpia mediante Ctrl+C
+        current_token = CancellationToken()
+        orchestrator.active_token = current_token
+        try:
+            with console.status("[bold cyan]AETHER pensando y ejecutando herramientas... (Ctrl+C para pausar/cancelar)[/bold cyan]", spinner="dots"):
+                answer = orchestrator.run_turn(user_input, cancellation_token=current_token)
+            render_response(answer)
+        except KeyboardInterrupt:
+            current_token.cancel("Operación cancelada por el usuario (Ctrl+C).")
+            orchestrator.state = AgentState.IDLE
+            console.print("\n[bold yellow]⚠️ Turno cancelado por el usuario (Ctrl+C). Contexto preservado y agente en reposo.[/bold yellow]")
+        finally:
+            orchestrator.active_token = None
 
 
 if __name__ == "__main__":

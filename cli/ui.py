@@ -4,7 +4,9 @@ Construido sobre 'rich' para proveer una experiencia visual de alta fidelidad.
 """
 
 import re
+import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -245,6 +247,8 @@ COMMANDS_META = {
     "/compact": "Compacta el historial para liberar contexto",
     "/undo": "Revierte al checkpoint o commit anterior",
     "/checkpoint": "Crea un punto de restauración Git inmediato",
+    "/cancel": "Cancela la tarea o turno activo y devuelve el agente a IDLE",
+    "/stop": "Detiene inmediatamente la generación o ejecución activa",
     "/map": "Genera el mapa estructural del repositorio",
     "/status": "Muestra el estado del agente y métricas VRAM",
     "/sessions": "Lista el historial de sesiones SQLite",
@@ -263,6 +267,106 @@ COMPLETION_WORDS = list(COMMANDS_META.keys()) + [
     "/mode agent", "/mode ask", "/mode plan", "/mode review",
     "/memory list", "/checkpoint create", "/checkpoint undo"
 ]
+
+
+def prompt_interactive_question(
+    questions: List[Dict[str, Any]],
+    console_inst: Optional[Console] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Presenta preguntas interactivas estructuradas al usuario y devuelve sus selecciones.
+    En entornos headless o CI (sin stdin interactivo), selecciona automáticamente la opción
+    recomendada o la primera opción disponible sin bloquear la ejecución.
+    """
+    con = console_inst or console
+    answers = []
+
+    is_interactive = False
+    try:
+        is_interactive = sys.stdin.isatty()
+    except Exception:
+        is_interactive = False
+
+    for q_item in questions:
+        q_text = q_item.get("question", "")
+        options = q_item.get("options", [])
+        is_multi = bool(q_item.get("is_multi_select", False))
+
+        if not options:
+            answers.append({"question": q_text, "selected": []})
+            continue
+
+        if not is_interactive:
+            recommended = [opt for opt in options if "(recommended)" in str(opt).lower()]
+            choice = recommended[0] if recommended else options[0]
+            con.print(f"[dim]🤖 [Modo no interactivo] Auto-seleccionado para '{q_text}': {choice}[/dim]")
+            answers.append({"question": q_text, "selected": [choice]})
+            continue
+
+        table = Table.grid(padding=(0, 2))
+        table.add_column(style="bold cyan", justify="right")
+        table.add_column(style="default")
+
+        for idx, opt in enumerate(options, 1):
+            if "(recommended)" in str(opt).lower():
+                table.add_row(f"[{idx}]", f"[bold green]{opt}[/bold green]")
+            else:
+                table.add_row(f"[{idx}]", f"{opt}")
+
+        con.print()
+        con.print(
+            Panel(
+                table,
+                title=f"[bold cyan]❓ {q_text}[/bold cyan]",
+                subtitle="[dim]Ingresa números separados por coma o Enter para recomendada[/dim]" if is_multi else "[dim]Ingresa el número de tu opción o Enter para recomendada[/dim]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
+
+        prompt_str = "[bold yellow]Tu selección (ej: 1" + (", 2): " if is_multi else "): ") + "[/bold yellow]"
+        try:
+            user_choice = con.input(prompt_str).strip()
+        except (KeyboardInterrupt, EOFError):
+            recommended = [opt for opt in options if "(recommended)" in str(opt).lower()]
+            choice = recommended[0] if recommended else options[0]
+            answers.append({"question": q_text, "selected": [choice]})
+            continue
+
+        if not user_choice:
+            recommended = [opt for opt in options if "(recommended)" in str(opt).lower()]
+            choice = recommended[0] if recommended else options[0]
+            answers.append({"question": q_text, "selected": [choice]})
+            continue
+
+        selected_opts = []
+        if is_multi:
+            parts = [p.strip() for p in user_choice.replace(";", ",").split(",") if p.strip()]
+            for p in parts:
+                if p.isdigit():
+                    num = int(p)
+                    if 1 <= num <= len(options):
+                        selected_opts.append(options[num - 1])
+                else:
+                    matched = [opt for opt in options if p.lower() in str(opt).lower()]
+                    if matched:
+                        selected_opts.append(matched[0])
+            if not selected_opts:
+                selected_opts = [options[0]]
+            answers.append({"question": q_text, "selected": selected_opts})
+        else:
+            if user_choice.isdigit():
+                num = int(user_choice)
+                if 1 <= num <= len(options):
+                    selected_opts = [options[num - 1]]
+                else:
+                    selected_opts = [options[0]]
+            else:
+                matched = [opt for opt in options if user_choice.lower() in str(opt).lower()]
+                selected_opts = [matched[0]] if matched else [options[0]]
+            answers.append({"question": q_text, "selected": selected_opts})
+
+    return answers
 
 
 def confirm_prompt(question: str) -> bool:
