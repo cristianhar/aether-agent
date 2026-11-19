@@ -150,7 +150,13 @@ def resolve_at_file_mentions(
         )
 
     full_context = "\n\n".join(context_blocks)
-    final_prompt = f"{full_context}\n\n[CONSULTA DEL USUARIO]:\n{clean_prompt}"
+    final_prompt = (
+        f"{full_context}\n\n"
+        f"[INSTRUCCIÓN DE CONTEXTO]: El contenido y esquema estructural del archivo ya está completamente provisto arriba. "
+        f"NO llames a ninguna herramienta (ni 'get_repo_map', ni 'list_directory', ni 'read_file'). "
+        f"Tu respuesta DEBE SER DIRECTAMENTE una explicación en texto técnico detallando el archivo.\n\n"
+        f"[CONSULTA DEL USUARIO]:\n{clean_prompt}"
+    )
     return final_prompt, attached_files
 
 

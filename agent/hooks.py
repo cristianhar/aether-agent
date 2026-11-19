@@ -118,8 +118,8 @@ class HookManager:
                 "• CONCLUYE EL TURNO AHORA e informa al usuario en tu respuesta final el resumen de los hitos alcanzados."
             )
 
-        # Si se exploró el directorio o el repo map
-        if tool_name in ["list_directory", "get_repo_map"]:
+        # Si se exploró el directorio con list_directory
+        if tool_name == "list_directory":
             result += (
                 "\n[HOOK POST-TOOL]: 📋 ¡Exploración completada con éxito!\n"
                 "• Ya tienes la lista real de archivos y carpetas en el resultado anterior.\n"

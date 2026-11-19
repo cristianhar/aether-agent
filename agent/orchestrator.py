@@ -898,36 +898,54 @@ class AgentOrchestrator:
                 is_premature_deflection = any(m in content_lower for m in premature_question_markers)
 
                 prompt_lower = user_prompt.lower()
-                requested_py_files = re.findall(r"['\"]([a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
+                has_attached_context = "[CONTEXTO ESTRUCTURADO DE @" in user_prompt or "[CONTEXTO ADJUNTO VÍA" in user_prompt
+                is_ask_mode = getattr(self.hooks, "mode", "agent") == "ask"
+
+                # Detección estricta de solicitud de creación de archivos
+                creation_requested = any(k in prompt_lower for k in [
+                    "crea ", "crear ", "implementa", "implementar", "desarrolla", "construye", "programa",
+                    "escribe un script", "haz un archivo", "genera el archivo"
+                ])
+                requested_py_files = re.findall(r"['\"]([a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt) if creation_requested else []
                 missing_requested_files = [
                     rf for rf in requested_py_files
-                    if not (Path.cwd() / rf).is_file()
+                    if not (Path.cwd() / rf).is_file() and not list(Path.cwd().glob(f"**/{rf}"))
                 ]
 
                 tests_requested = any(w in prompt_lower for w in ["test", "tests", "prueba", "pruebas", "pytest"])
                 is_code_task = (
-                    bool(requested_py_files)
-                    or tests_requested
-                    or any(k in prompt_lower for k in [
-                        "implementa", "crea ", "desarrolla", "construye", "programa",
-                        "refactoriza", "corrige", "depura", "código", "funcion", "función",
-                        "clase ", "modulo", "módulo", "script", "escribe un script", "haz un archivo"
-                    ])
-                    or files_modified_in_turn
+                    not is_ask_mode
+                    and not has_attached_context
+                    and (
+                        bool(missing_requested_files)
+                        or (creation_requested and tests_requested)
+                        or files_modified_in_turn
+                        or (creation_requested and any(k in prompt_lower for k in ["clase ", "modulo", "módulo", "script"]))
+                    )
                 )
 
-                is_inspection_task = any(w in prompt_lower for w in [
-                    "archivo", "archivos", "carpeta", "carpetas", "directorio", "directorios",
-                    "raiz", "raíz", "estructura", "que hay", "qué hay", "lista ", "listar",
-                    "que tiene", "qué tiene", "contenido del proyecto", "elementos"
-                ])
+                has_attached_context = "[CONTEXTO ESTRUCTURADO DE @" in user_prompt or "[CONTEXTO ADJUNTO VÍA" in user_prompt
+
+                is_workspace_listing_task = (
+                    not has_attached_context
+                    and not is_code_task
+                    and any(phrase in prompt_lower for phrase in [
+                        "que archivos hay", "qué archivos hay", "archivos hay",
+                        "en la raiz", "en la raíz", "en el directorio",
+                        "listar archivos", "lista de archivos", "lista los archivos", "mostrar archivos",
+                        "que carpetas hay", "qué carpetas hay", "listar carpetas",
+                        "estructura del proyecto", "estructura de archivos", "árbol de archivos",
+                        "contenido del proyecto", "que contiene el proyecto", "qué contiene el proyecto",
+                        "que hay en la raiz", "qué hay en la raíz", "que hay en el proyecto"
+                    ])
+                )
 
                 # Guardián de Exploración Autónoma: Si el usuario pidió ver archivos y el modelo no los listó
                 inspection_tools_used = any(
                     any(t in a for t in ["list_directory", "get_repo_map", "read_file", "search_codebase"])
                     for a in action_history
                 )
-                if is_inspection_task and not inspection_tools_used and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                if is_workspace_listing_task and not inspection_tools_used and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
                     proactive_prompts_sent += 1
                     self.memory.add_assistant_message(content=content)
                     inspection_hint = (
@@ -937,6 +955,23 @@ class AgentOrchestrator:
                         "para leer físicamente los archivos del disco e informar al usuario."
                     )
                     self.memory.add_user_message(content=inspection_hint)
+                    continue
+
+                # Guardián Anti-Pasividad: Si el usuario consultó por un archivo y el modelo pide pasivamente que se lo compartan
+                passive_deflection = any(p in content.lower() for p in [
+                    "proporciones", "proporcionar", "comparte el código", "compartir el código",
+                    "pásame el código", "pasame el contenido", "no tengo acceso al archivo",
+                    "puedes compartir", "envíame el código", "enviame el código", "más detalles sobre el contenido"
+                ])
+                if not has_attached_context and passive_deflection and iteration < self.max_iterations - 1 and proactive_prompts_sent < 2:
+                    proactive_prompts_sent += 1
+                    self.memory.add_assistant_message(content=content)
+                    file_inspection_hint = (
+                        "[SISTEMA AETHER - AUTO-INSPECCIÓN OBLIGATORIA]: NUNCA le pidas el archivo o código al usuario.\n"
+                        "• Eres un agente local autónomo con acceso directo al disco: tu deber es usar 'read_file' o 'get_file_outline' "
+                        "para leer e inspeccionar tú mismo el archivo en disco y responder técnicamente al usuario."
+                    )
+                    self.memory.add_user_message(content=file_inspection_hint)
                     continue
 
                 if is_code_task:

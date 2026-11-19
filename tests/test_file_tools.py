@@ -254,5 +254,26 @@ def test_find_fuzzy_target_normalizes_empty_lines():
     assert "def add(a, b):" in matched_str
 
 
+def test_tool_aliases_execution(tmp_path):
+    """Verifica que execute_tool resuelva alias comunes generados por LLMs locales."""
+    from tools.registry import execute_tool
+
+    f = tmp_path / "sample.py"
+    f.write_text("def hello():\n    return 'world'\n", encoding="utf-8")
+
+    # 1. analyze_file con alias file_path
+    res_outline = execute_tool("analyze_file", {"file_path": str(f)})
+    assert "def hello()" in res_outline
+
+    # 2. view_file con alias file
+    res_view = execute_tool("view_file", {"file": str(f)})
+    assert "return 'world'" in res_view
+
+    # 3. get_repo_instructions
+    res_inst = execute_tool("get_repo_instructions", {})
+    assert "instrucciones del proyecto" in res_inst.lower()
+
+
+
 
 

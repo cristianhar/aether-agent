@@ -998,6 +998,52 @@ def execute_tool(name: str, arguments: Any) -> str:
     """
     Ejecuta una herramienta por nombre validando y normalizando sus argumentos.
     """
+    # Normalización de alias comunes emitidos por LLMs locales
+    TOOL_ALIASES = {
+        # Análisis e inspección de código
+        "analyze_file": "get_file_outline",
+        "inspect_file": "get_file_outline",
+        "examine_file": "get_file_outline",
+        "inspect_code": "get_file_outline",
+        "get_outline": "get_file_outline",
+        # Lectura de archivos
+        "view_file": "read_file",
+        "show_file": "read_file",
+        "cat_file": "read_file",
+        "open_file": "read_file",
+        "get_file_content": "read_file",
+        # Listado de archivos / carpetas
+        "list_files": "list_directory",
+        "dir": "list_directory",
+        "ls": "list_directory",
+        "get_files": "list_directory",
+        "tree": "list_directory",
+        # Búsqueda
+        "grep": "search_codebase",
+        "find_code": "search_codebase",
+        "search_text": "search_codebase",
+        "search_files": "search_codebase",
+        # Ejecución de comandos
+        "exec": "run_command",
+        "execute_command": "run_command",
+        "bash": "run_command",
+        "sh": "run_command",
+        "terminal": "run_command",
+        # Instrucciones del repositorio
+        "get_repo_instructions": "get_project_instructions",
+        "get_agent_instructions": "get_project_instructions",
+        "repo_instructions": "get_project_instructions",
+        # Creación / edición de archivos
+        "create_file": "write_file",
+        "new_file": "write_file",
+        "save_file": "write_file",
+        # Tests
+        "run_test": "run_tests",
+        "test": "run_tests",
+        "pytest": "run_tests",
+    }
+    name = TOOL_ALIASES.get(name, name)
+
     if name not in TOOL_HANDLERS:
         name_lower = name.lower()
         if "instruction" in name_lower or "agent" in name_lower:
