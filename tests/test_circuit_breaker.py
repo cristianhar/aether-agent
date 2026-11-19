@@ -541,6 +541,34 @@ def test_circuit_breaker_allows_write_file_mutation_when_content_changes(tmp_pat
     assert msg == ""
 
 
+def test_circuit_breaker_update_plan_none_target_file_obj_safe():
+    """Verifica que el circuit breaker no falle con AttributeError cuando tool_name no tiene ruta (ej: update_plan)."""
+    from agent.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(model="dummy-model")
+
+    # update_plan repetido exactamente con el mismo paso
+    blocked, msg = orchestrator._check_circuit_breaker(
+        tool_name="update_plan",
+        args={"current_step": 1, "plan_steps": ["Paso 1", "Paso 2"]},
+        action_history=["update_plan:step_1_"],
+        files_modified_since_cmd_fail=False
+    )
+    # Debe ser bloqueado por repetición sin lanzar AttributeError
+    assert blocked is True
+    assert "update_plan" in msg
+
+    # update_plan avanzando de paso 1 a paso 2 no debe ser bloqueado
+    blocked_adv, msg_adv = orchestrator._check_circuit_breaker(
+        tool_name="update_plan",
+        args={"current_step": 2, "plan_steps": ["Paso 1", "Paso 2"]},
+        action_history=["update_plan:step_1_"],
+        files_modified_since_cmd_fail=False
+    )
+    assert blocked_adv is False
+    assert msg_adv == ""
+
+
+
 
 
 

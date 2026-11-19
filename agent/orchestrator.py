@@ -404,7 +404,7 @@ class AgentOrchestrator:
             "read_file", "list_directory", "search_codebase", "grep_search", "grep", "get_file_outline",
             "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
             "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map",
-            "conclude_turn", "finish_turn", "complete_task", "finish", "done"
+            "get_plan", "conclude_turn", "finish_turn", "complete_task", "finish", "done"
         }
 
         # Completion Guard: Si el plan fue completado, no permitir nuevas herramientas activas de mutación
@@ -481,7 +481,10 @@ class AgentOrchestrator:
                         pass
 
                 if not is_genuine_mutation:
-                    current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
+                    if tool_name == "update_plan":
+                        current_signature = f"update_plan:step_{args.get('current_step', '')}_{args.get('is_completed', '')}"
+                    else:
+                        current_signature = f"{tool_name}:{args.get('path') or args.get('command') or ''}"
                     candidate_history = list(action_history) + [current_signature]
                     cycle = detect_action_cycle(candidate_history, max_period=3, min_repeats=2)
                     if cycle:
@@ -552,12 +555,19 @@ class AgentOrchestrator:
                                             )
                                 else:
                                     prompt_test_files = re.findall(r"['\"](test_[a-zA-Z0-9_\-\.]+\.py)['\"]", user_prompt)
-                                    test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else f"'test_{target_file_obj.stem}.py'"
-                                    cycle_hint = (
-                                        f"• El archivo ya fue creado o guardado. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
-                                        "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
-                                        f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
-                                    )
+                                    fallback_stem = target_file_obj.stem if target_file_obj else "componente"
+                                    test_hint_target = f"'{prompt_test_files[0]}'" if prompt_test_files else f"'test_{fallback_stem}.py'"
+                                    if tool_name == "update_plan":
+                                        cycle_hint = (
+                                            "• Ya actualizaste el plan anteriormente con este mismo estado. "
+                                            "Avanza a la implementación del siguiente paso o concluye el turno si el plan fue completado."
+                                        )
+                                    else:
+                                        cycle_hint = (
+                                            f"• La acción '{tool_name}' ya fue ejecutada sin cambios. Si aún no has creado las pruebas, tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file' para crear {test_hint_target}.\n"
+                                            "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                            f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
+                                        )
                             msg = (
                                 f"⛔ [CIRCUIT BREAKER UNIVERSAL - CICLO PERIÓDICO DETECTADO (Periodo {period})]:\n"
                                 f"La acción '{current_signature}' se está repitiendo consecutivamente sin modificaciones en el disco: {cycle_str}.\n"
