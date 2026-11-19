@@ -20,6 +20,12 @@ import {
   Shield,
   Trash2,
   Columns,
+  Package,
+  Globe,
+  HelpCircle,
+  Layers,
+  Send,
+  Bot,
 } from "lucide-react";
 import "./App.css";
 
@@ -38,10 +44,31 @@ interface SlashCommand {
   icon: React.ReactNode;
 }
 
+interface QuestionItem {
+  question: string;
+  options: string[];
+  is_multi_select?: boolean;
+}
+
+interface ArtifactItem {
+  id: string;
+  type: string;
+  title: string;
+  created_at: string;
+  summary?: string;
+}
+
 const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: "/mode agent", label: "/mode agent", desc: "Modo Autónomo Total (lectura, escritura y comandos)", icon: <ShieldCheck size={14} color="#10b981" /> },
   { cmd: "/mode ask", label: "/mode ask", desc: "Modo Seguro (requiere confirmación para cambios)", icon: <ShieldAlert size={14} color="#f59e0b" /> },
   { cmd: "/mode plan", label: "/mode plan", desc: "Modo Planificador (solo análisis, sin modificar archivos)", icon: <Shield size={14} color="#3b82f6" /> },
+  { cmd: "/mode review", label: "/mode review", desc: "Modo Auditoría AST y Code Review riguroso", icon: <Layers size={14} color="#a855f7" /> },
+  { cmd: "/skills", label: "/skills", desc: "Ver catálogo de habilidades descubiertas (SKILL.md)", icon: <Layers size={14} color="#00d2ff" /> },
+  { cmd: "/subagents", label: "/subagents", desc: "Ver estado y buzón de subagentes activos", icon: <Bot size={14} color="#10b981" /> },
+  { cmd: "/artifacts", label: "/artifacts", desc: "Ver artefactos persistentes generados en la sesión", icon: <Package size={14} color="#f59e0b" /> },
+  { cmd: "/language es", label: "/language es", desc: "Cambiar prompts del sistema al Español", icon: <Globe size={14} color="#00d2ff" /> },
+  { cmd: "/language en", label: "/language en", desc: "Switch system prompts to English", icon: <Globe size={14} color="#00d2ff" /> },
+  { cmd: "/cancel", label: "/cancel", desc: "Cancelar tarea activa del agente inmediatamente", icon: <Square size={14} color="#ef4444" /> },
   { cmd: "/test", label: "/test", desc: "Ejecutar suite completa de tests automatizados (pytest)", icon: <Play size={14} color="#00d2ff" /> },
   { cmd: "/diff", label: "/diff", desc: "Ver cambios pendientes de Git y abrir pestaña diff", icon: <GitBranch size={14} color="#a855f7" /> },
   { cmd: "/review", label: "/review", desc: "Auditoría de código AST sobre el archivo activo", icon: <FileCode size={14} color="#10b981" /> },
@@ -53,7 +80,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"editor" | "diff">("editor");
-  const [sidebarTab, setSidebarTab] = useState<"files" | "repomap">("files");
+  const [sidebarTab, setSidebarTab] = useState<"files" | "repomap" | "artifacts">("files");
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<string>("main.py");
   const [fileContent, setFileContent] = useState<string>("# Cargando código...");
@@ -61,18 +88,25 @@ export default function App() {
   const [fileList, setFileList] = useState<string[]>([]);
   const [fileFilter, setFileFilter] = useState<string>("");
   const [repoMap, setRepoMap] = useState<string>("");
+  const [artifactsList, setArtifactsList] = useState<ArtifactItem[]>([]);
   const [vramInfo, setVramInfo] = useState<string>("Conectando con GPU...");
   const [agentMode, setAgentMode] = useState<string>("agent");
+  const [language, setLanguage] = useState<string>("es");
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content:
-        "👋 ¡Hola! Soy **AETHER IDE** (Tauri v2 Desktop). Estoy conectado al Agent Runtime local con tu RTX 4060.\n\n💡 *Tip: Escribe `/` para ver los comandos rápidos (`/test`, `/diff`, `/mode`, `/review`, `/checkpoint`, etc.) o `@` para mencionar un archivo.*",
+        "👋 ¡Hola! Soy **AETHER IDE** (Tauri v2 Desktop). Estoy conectado al Agent Runtime local con tu RTX 4060.\n\n💡 *Tip: Escribe `/` para ver comandos (`/test`, `/diff`, `/mode`, `/skills`, `/subagents`, `/artifacts`, etc.) o `@` para mencionar un archivo.*",
     },
   ]);
   const [inputPrompt, setInputPrompt] = useState<string>("");
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [gitDiff, setGitDiff] = useState<string>("");
+
+  // Preguntas Interactivas del Agente (ask_question)
+  const [pendingQuestions, setPendingQuestions] = useState<QuestionItem[] | null>(null);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string[]>>({});
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState<boolean>(false);
 
   // Slash commands popup state
   const [showSlashMenu, setShowSlashMenu] = useState<boolean>(false);
@@ -91,12 +125,45 @@ export default function App() {
     fetchStatus();
     fetchTree();
     fetchDiff();
+    fetchArtifacts();
     loadFile("main.py");
   }, []);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isRunning]);
+  }, [messages, isRunning, pendingQuestions]);
+
+  // Polling automático de preguntas interactivas pendientes cuando el agente está pensando
+  useEffect(() => {
+    if (!isRunning) {
+      setPendingQuestions(null);
+      return;
+    }
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${BRIDGE_URL}/api/question/pending`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.pending && Array.isArray(data.questions) && data.questions.length > 0) {
+            setPendingQuestions(data.questions);
+            setSelectedAnswers((prev) => {
+              const updated = { ...prev };
+              data.questions.forEach((q: QuestionItem, i: number) => {
+                if (!updated[i] || updated[i].length === 0) {
+                  updated[i] = [q.options[0] || "Sí"];
+                }
+              });
+              return updated;
+            });
+          } else {
+            setPendingQuestions(null);
+          }
+        }
+      } catch {}
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isRunning]);
 
   // Global Keyboard Shortcuts (Ctrl+S, Escape, Ctrl+B)
   useEffect(() => {
@@ -127,6 +194,7 @@ export default function App() {
         const data = await res.json();
         setVramInfo(data.vram_info || "RTX 4060 · Online");
         if (data.mode) setAgentMode(data.mode);
+        if (data.language) setLanguage(data.language);
       }
     } catch {
       setVramInfo("Bridge desconectado (Inicia bridge/server.py)");
@@ -154,6 +222,34 @@ export default function App() {
         setGitDiff(data.diff || "# No hay cambios pendientes de commit.");
       }
     } catch {}
+  }
+
+  async function fetchArtifacts() {
+    try {
+      const res = await fetch(`${BRIDGE_URL}/api/artifacts`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.artifacts)) {
+          setArtifactsList(data.artifacts);
+        }
+      }
+    } catch {}
+  }
+
+  async function loadArtifact(art: ArtifactItem) {
+    try {
+      const res = await fetch(`${BRIDGE_URL}/api/artifact?id=${encodeURIComponent(art.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const displayName = `[Artefacto] ${art.title || art.id}.md`;
+        setSelectedFile(displayName);
+        setFileContent(data.content || `# ${art.title}\n${art.summary || ""}`);
+        setOriginalContent(data.content || "");
+        setActiveTab("editor");
+      }
+    } catch (err) {
+      alert(`❌ Error cargando artefacto: ${err}`);
+    }
   }
 
   async function loadFile(path: string) {
@@ -201,6 +297,44 @@ export default function App() {
       }
     } catch (err) {
       alert(`❌ Error guardando: ${err}`);
+    }
+  }
+
+  function handleOptionToggle(qIdx: number, opt: string, isMulti?: boolean) {
+    setSelectedAnswers((prev) => {
+      const current = prev[qIdx] || [];
+      if (isMulti) {
+        const next = current.includes(opt)
+          ? current.filter((x) => x !== opt)
+          : [...current, opt];
+        return { ...prev, [qIdx]: next.length > 0 ? next : [opt] };
+      } else {
+        return { ...prev, [qIdx]: [opt] };
+      }
+    });
+  }
+
+  async function handleSubmitAnswers() {
+    if (!pendingQuestions || pendingQuestions.length === 0) return;
+    setIsSubmittingAnswer(true);
+    try {
+      const answersPayload = pendingQuestions.map((q, idx) => ({
+        question: q.question,
+        selected: selectedAnswers[idx] && selectedAnswers[idx].length > 0 ? selectedAnswers[idx] : [q.options[0] || "Sí"],
+      }));
+      const res = await fetch(`${BRIDGE_URL}/api/question/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: answersPayload }),
+      });
+      if (res.ok) {
+        setPendingQuestions(null);
+        setSelectedAnswers({});
+      }
+    } catch (err) {
+      alert(`❌ Error enviando respuesta: ${err}`);
+    } finally {
+      setIsSubmittingAnswer(false);
     }
   }
 
@@ -344,6 +478,8 @@ export default function App() {
         ]);
 
         if (data.mode) setAgentMode(data.mode);
+        if (data.language) setLanguage(data.language);
+
         if (data.action === "open_diff") {
           fetchDiff();
           setActiveTab("diff");
@@ -353,6 +489,7 @@ export default function App() {
 
         fetchDiff();
         fetchTree();
+        fetchArtifacts();
       } else {
         const err = await res.json();
         setMessages((prev) => [
@@ -378,20 +515,44 @@ export default function App() {
       await fetch(`${BRIDGE_URL}/api/cancel`, { method: "POST" });
     } catch {}
     setIsRunning(false);
+    setPendingQuestions(null);
   }
 
   async function cycleMode() {
-    const nextMode = agentMode === "agent" ? "ask" : agentMode === "ask" ? "plan" : "agent";
+    const modes = ["agent", "ask", "plan", "review"];
+    const currentIdx = modes.indexOf(agentMode);
+    const nextMode = modes[(currentIdx + 1) % modes.length];
     try {
-      const res = await fetch(`${BRIDGE_URL}/api/chat`, {
+      const res = await fetch(`${BRIDGE_URL}/api/mode`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: `/mode ${nextMode}` }),
+        body: JSON.stringify({ mode: nextMode }),
       });
       if (res.ok) {
         const data = await res.json();
-        setAgentMode(nextMode);
-        setMessages((prev) => [...prev, { role: "assistant", content: data.answer, isCommand: true }]);
+        setAgentMode(data.mode);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `🛡️ Modo cambiado a **${data.mode.toUpperCase()}**.`, isCommand: true },
+        ]);
+      }
+    } catch {}
+  }
+
+  async function toggleLanguage() {
+    const nextLang = language === "es" ? "en" : "es";
+    try {
+      const res = await fetch(`${BRIDGE_URL}/api/language`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: nextLang }),
+      });
+      if (res.ok) {
+        setLanguage(nextLang);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `🌐 Idioma del sistema actualizado a **${nextLang.toUpperCase()}**.`, isCommand: true },
+        ]);
       }
     } catch {}
   }
@@ -455,12 +616,23 @@ export default function App() {
           <button
             className={`badge-mode ${agentMode}`}
             onClick={cycleMode}
-            title="Clic para cambiar modo (Agent / Ask / Plan)"
+            title="Clic para cambiar modo (Agent / Ask / Plan / Review)"
           >
             {agentMode === "agent" && <ShieldCheck size={13} />}
             {agentMode === "ask" && <ShieldAlert size={13} />}
             {agentMode === "plan" && <Shield size={13} />}
+            {agentMode === "review" && <Layers size={13} />}
             <span>MODO: {agentMode.toUpperCase()}</span>
+          </button>
+
+          {/* Language Switcher Pill */}
+          <button
+            className="badge-lang"
+            onClick={toggleLanguage}
+            title="Clic para alternar idioma de prompts (ES / EN)"
+          >
+            <Globe size={13} />
+            <span>{language.toUpperCase()}</span>
           </button>
 
           <div className="badge" title="VRAM Hardware Guard">
@@ -483,7 +655,7 @@ export default function App() {
 
       {/* Main Workspace Layout */}
       <div className="aether-workspace">
-        {/* Left Sidebar: File Explorer / AST Repo-Map */}
+        {/* Left Sidebar: File Explorer / AST Repo-Map / Artifacts */}
         {!sidebarCollapsed && (
           <aside className="aether-sidebar">
             <div className="sidebar-tab-header">
@@ -499,7 +671,23 @@ export default function App() {
               >
                 <Sparkles size={14} /> Mapa IA
               </button>
-              <button className="btn-icon" onClick={fetchTree} title="Actualizar árbol y mapa">
+              <button
+                className={`sidebar-tab-btn ${sidebarTab === "artifacts" ? "active" : ""}`}
+                onClick={() => {
+                  fetchArtifacts();
+                  setSidebarTab("artifacts");
+                }}
+              >
+                <Package size={14} /> Artefactos ({artifactsList.length})
+              </button>
+              <button
+                className="btn-icon"
+                onClick={() => {
+                  fetchTree();
+                  fetchArtifacts();
+                }}
+                title="Actualizar explorador"
+              >
                 <RefreshCw size={12} />
               </button>
             </div>
@@ -532,8 +720,28 @@ export default function App() {
                   )}
                 </div>
               </div>
-            ) : (
+            ) : sidebarTab === "repomap" ? (
               <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico AST..."}</pre>
+            ) : (
+              <div className="artifact-list">
+                {artifactsList.map((art) => (
+                  <div
+                    key={art.id}
+                    className="artifact-card"
+                    onClick={() => loadArtifact(art)}
+                    title={`Artefacto: ${art.title} (${art.type})`}
+                  >
+                    <div className="artifact-title">{art.title}</div>
+                    <div className="artifact-meta">
+                      <span>🏷️ {art.type}</span>
+                      <span>📅 {new Date(art.created_at).toLocaleTimeString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {artifactsList.length === 0 && (
+                  <div className="file-empty">No hay artefactos en esta sesión aún.</div>
+                )}
+              </div>
             )}
           </aside>
         )}
@@ -608,8 +816,8 @@ export default function App() {
               <span>Agente Autónomo</span>
             </div>
             {isRunning ? (
-              <button className="btn-cancel" onClick={handleCancel} title="Cancelar (Escape)">
-                <Square size={12} /> Cancelar (Esc)
+              <button className="btn-cancel" onClick={handleCancel} title="Cancelar tarea activa (Escape)">
+                <Square size={12} /> Detener (Esc)
               </button>
             ) : (
               <span className="agent-status-idle">IDLE</span>
@@ -623,6 +831,53 @@ export default function App() {
                 <div className="bubble-content">{m.content}</div>
               </div>
             ))}
+
+            {/* Tarjeta de Pregunta Interactiva (ask_question) */}
+            {pendingQuestions && pendingQuestions.length > 0 && (
+              <div className="interactive-question-card">
+                <div className="question-header">
+                  <HelpCircle size={16} className="question-icon" />
+                  <span className="question-badge">PREGUNTA INTERACTIVA</span>
+                </div>
+                {pendingQuestions.map((q, qIdx) => (
+                  <div key={qIdx} className="question-item">
+                    <p className="question-text">{q.question}</p>
+                    <div className="options-container">
+                      {q.options.map((opt, oIdx) => {
+                        const isSelected = (selectedAnswers[qIdx] || []).includes(opt);
+                        return (
+                          <button
+                            key={oIdx}
+                            type="button"
+                            className={`option-btn ${isSelected ? "selected" : ""}`}
+                            onClick={() => handleOptionToggle(qIdx, opt, q.is_multi_select)}
+                          >
+                            <span className="option-indicator">{isSelected ? "●" : "○"}</span>
+                            <span className="option-label">{opt}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <div className="question-actions">
+                  <button
+                    type="button"
+                    className="btn-submit-answer"
+                    onClick={handleSubmitAnswers}
+                    disabled={isSubmittingAnswer}
+                  >
+                    {isSubmittingAnswer ? (
+                      <RefreshCw size={14} className="spin" />
+                    ) : (
+                      <Send size={14} />
+                    )}
+                    <span>Responder al Agente</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {isRunning && (
               <div className="chat-bubble assistant thinking">
                 <RefreshCw size={14} className="spin" />
@@ -679,7 +934,7 @@ export default function App() {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Pregunta o ejecuta comandos con / (/test, /diff, /mode, /review)..."
+              placeholder="Pregunta o ejecuta comandos con / (/test, /diff, /skills, /artifacts)..."
               value={inputPrompt}
               disabled={isRunning}
               onChange={handleInputChange}

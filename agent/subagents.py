@@ -9,17 +9,13 @@ Inspirado en la arquitectura de Antigravity (Google DeepMind):
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
-import os
 from pathlib import Path
 import shutil
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
 from agent.hooks import HookManager
-from agent.prompts import get_system_prompt
-from agent.state import AgentState
 
 
 @dataclass
@@ -254,6 +250,22 @@ class SubagentManager:
         except Exception as e:
             instance.status = "error"
             return f"❌ Error comunicando con subagente `{target_id}`: {str(e)}"
+
+    def list_subagents(self) -> List[Dict[str, Any]]:
+        """Reporta todos los subagentes estructurados en formato dict para APIs y UIs."""
+        results = []
+        for cid, inst in self.instances.items():
+            results.append({
+                "id": cid,
+                "role": inst.role,
+                "type_name": inst.type_name,
+                "status": inst.status,
+                "workspace_mode": inst.workspace_mode,
+                "inbox_count": len(inst.inbox),
+                "outbox_count": len(inst.outbox),
+                "is_killed": inst.is_killed,
+            })
+        return results
 
     def manage_subagents(self, action: str, conversation_ids: Optional[List[str]] = None) -> str:
         """

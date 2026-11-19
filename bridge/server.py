@@ -46,9 +46,8 @@ def _list_workspace_files(root: Path) -> List[str]:
 
 from agent.orchestrator import AgentOrchestrator
 from agent.session import SessionManager
-from agent.state import AgentState, CancellationToken
+from agent.state import CancellationToken
 from tools.git_tools import get_git_diff, get_git_status
-from tools.patch_engine import PatchEngine
 from tools.repomap import generate_repo_map
 from tools.vram_monitor import get_hardware_vram_status
 
@@ -56,11 +55,41 @@ _ACTIVE_ORCHESTRATOR: Optional[AgentOrchestrator] = None
 _ACTIVE_TOKEN: Optional[CancellationToken] = None
 _LOCK = threading.Lock()
 
+# Soporte de preguntas interactivas (ask_question) para Desktop
+_PENDING_QUESTION: Optional[List[Dict[str, Any]]] = None
+_QUESTION_EVENT = threading.Event()
+_QUESTION_ANSWER: Optional[List[Dict[str, Any]]] = None
+
+
+def bridge_ask_question_callback(questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Intercepta preguntas interactivas para que el Desktop pueda responderlas."""
+    global _PENDING_QUESTION, _QUESTION_ANSWER
+    _PENDING_QUESTION = questions
+    _QUESTION_EVENT.clear()
+    _QUESTION_ANSWER = None
+
+    # Esperar hasta 45 segundos la interacción del usuario en la UI
+    answered = _QUESTION_EVENT.wait(timeout=45.0)
+    if answered and _QUESTION_ANSWER:
+        ans = _QUESTION_ANSWER
+    else:
+        # Fallback a opción recomendada
+        ans = []
+        for q in questions:
+            opts = q.get("options", [])
+            chosen = opts[0] if opts else "Sí"
+            ans.append({"question": q.get("question", ""), "selected": [chosen]})
+
+    _PENDING_QUESTION = None
+    return ans
+
 
 def get_or_create_orchestrator(model: str = "qwen2.5-coder:7b") -> AgentOrchestrator:
     global _ACTIVE_ORCHESTRATOR
     with _LOCK:
         if _ACTIVE_ORCHESTRATOR is None:
+            from tools.agent_tools import set_ask_question_callback
+            set_ask_question_callback(bridge_ask_question_callback)
             _ACTIVE_ORCHESTRATOR = AgentOrchestrator(model=model)
         return _ACTIVE_ORCHESTRATOR
 
@@ -107,6 +136,7 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
         orch = get_or_create_orchestrator()
 
         if path == "/api/status":
+            from agent.i18n import get_current_language
             vram = get_hardware_vram_status()
             self._send_json({
                 "status": "online",
@@ -114,6 +144,7 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                 "model": orch.model,
                 "session_id": orch.session_id,
                 "mode": getattr(orch.hooks, "mode", "agent"),
+                "language": get_current_language(),
                 "cwd": str(_REPO_ROOT),
                 "vram_info": vram,
             })
@@ -174,6 +205,26 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"error": str(e)}, 404)
 
+        elif path == "/api/skills":
+            from agent.skills import get_global_skill_registry
+            reg = get_global_skill_registry()
+            self._send_json({"skills": reg.list_skills()})
+
+        elif path == "/api/subagents":
+            from agent.subagents import get_global_subagent_manager
+            mgr = get_global_subagent_manager()
+            self._send_json({"subagents": mgr.list_subagents()})
+
+        elif path == "/api/question/pending":
+            self._send_json({
+                "pending": _PENDING_QUESTION is not None,
+                "questions": _PENDING_QUESTION or []
+            })
+
+        elif path == "/api/language":
+            from agent.i18n import get_current_language
+            self._send_json({"language": get_current_language()})
+
         else:
             self._send_json({"error": "Endpoint no encontrado."}, 404)
 
@@ -222,20 +273,81 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
 
                 elif cmd == "/mode":
                     target_mode = arg.lower() or "agent"
-                    if target_mode in ["ask", "agent", "plan"]:
+                    if target_mode in ["ask", "agent", "plan", "review"]:
                         orch.hooks.set_mode(target_mode)
                         desc = {
                             "agent": "Modo Autónomo Total (lectura, escritura y ejecución libre de herramientas).",
                             "ask": "Modo Seguro (requiere confirmación para modificar archivos y ejecutar comandos).",
-                            "plan": "Modo Planificador (solo análisis arquitectónico y razonamiento, sin modificar archivos)."
+                            "plan": "Modo Planificador (solo análisis arquitectónico y razonamiento, sin modificar archivos).",
+                            "review": "Modo Auditoría AST y Code Review riguroso."
                         }.get(target_mode, "")
                         answer = f"🛡️ **Modo cambiado a `{target_mode.upper()}`:**\n{desc}"
                         self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "mode": target_mode, "is_command": True})
                         return
                     else:
-                        answer = "⚠️ Modo no reconocido. Opciones válidas: `/mode agent`, `/mode ask`, `/mode plan`."
+                        answer = "⚠️ Modo no reconocido. Opciones válidas: `/mode agent`, `/mode ask`, `/mode plan`, `/mode review`."
                         self._send_json({"success": True, "answer": answer, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
                         return
+
+                elif cmd in ["/cancel", "/stop"]:
+                    with _LOCK:
+                        if _ACTIVE_TOKEN:
+                            _ACTIVE_TOKEN.cancel("Cancelado por comando.")
+                    self._send_json({"success": True, "answer": "🛑 Tarea activa cancelada con éxito.", "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
+
+                elif cmd == "/language":
+                    from agent.i18n import set_current_language, get_current_language
+                    target = arg.lower()
+                    if target in ["es", "en"]:
+                        set_current_language(target)
+                        ans = f"🌐 Idioma del sistema actualizado a **{target.upper()}**."
+                    else:
+                        ans = f"🌐 Idioma actual: **{get_current_language().upper()}**.\nUsa `/language es` o `/language en`."
+                    self._send_json({"success": True, "answer": ans, "state": "IDLE", "session_id": orch.session_id, "language": get_current_language(), "is_command": True})
+                    return
+
+                elif cmd == "/skills":
+                    from agent.skills import get_global_skill_registry
+                    reg = get_global_skill_registry()
+                    skills = reg.list_skills()
+                    if not skills:
+                        ans = "ℹ️ No hay habilidades (skills) registradas en el catálogo."
+                    else:
+                        lines = ["🧩 **Habilidades (Skills) Disponibles:**\n"]
+                        for s in skills:
+                            lines.append(f"- **`{s.get('name')}`** (v{s.get('version', '1.0')}): {s.get('description', 'Sin descripción')}")
+                        ans = "\n".join(lines)
+                    self._send_json({"success": True, "answer": ans, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
+
+                elif cmd == "/subagents":
+                    from agent.subagents import get_global_subagent_manager
+                    mgr = get_global_subagent_manager()
+                    subs = mgr.list_subagents()
+                    if not subs:
+                        ans = "ℹ️ No hay subagentes activos ni definidos en la sesión actual."
+                    else:
+                        lines = ["🤖 **Subagentes Activos:**\n"]
+                        for s in subs:
+                            lines.append(f"- **`{s.get('id')}`** [{s.get('role')}]: Estado `{s.get('status')}`")
+                        ans = "\n".join(lines)
+                    self._send_json({"success": True, "answer": ans, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
+
+                elif cmd == "/artifacts":
+                    from agent.artifacts import ArtifactManager
+                    mgr = ArtifactManager(session_id=orch.session_id)
+                    arts = mgr.list_artifacts()
+                    if not arts:
+                        ans = "ℹ️ No se han generado artefactos persistentes en esta sesión."
+                    else:
+                        lines = ["📦 **Artefactos en esta sesión:**\n"]
+                        for a in arts:
+                            lines.append(f"- **`{a.get('id')}`** ({a.get('type')}): {a.get('title')}")
+                        ans = "\n".join(lines)
+                    self._send_json({"success": True, "answer": ans, "state": "IDLE", "session_id": orch.session_id, "is_command": True})
+                    return
 
                 elif cmd == "/checkpoint":
                     from agent.checkpoints import SafeCheckpointManager
@@ -308,6 +420,30 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "path": rel_path, "message": f"Archivo '{p.name}' guardado correctamente."})
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+
+        elif path == "/api/question/answer":
+            global _QUESTION_ANSWER
+            answers = body.get("answers", [])
+            _QUESTION_ANSWER = answers
+            _QUESTION_EVENT.set()
+            self._send_json({"success": True, "message": "Respuesta enviada al agente."})
+
+        elif path == "/api/language":
+            from agent.i18n import set_current_language
+            target = body.get("language", "").lower()
+            if target in ["es", "en"]:
+                set_current_language(target)
+                self._send_json({"success": True, "language": target})
+            else:
+                self._send_json({"error": "Idioma no soportado. Usa 'es' o 'en'."}, 400)
+
+        elif path == "/api/mode":
+            mode = body.get("mode", "").lower()
+            if mode in ["agent", "ask", "plan", "review"]:
+                orch.hooks.set_mode(mode)
+                self._send_json({"success": True, "mode": mode})
+            else:
+                self._send_json({"error": "Modo inválido. Opciones: agent, ask, plan, review"}, 400)
 
         else:
             self._send_json({"error": "Endpoint no encontrado."}, 404)

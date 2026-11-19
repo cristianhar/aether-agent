@@ -124,6 +124,20 @@ class SkillRegistry:
                     return sk
         return None
 
+    def list_skills(self) -> List[Dict[str, Any]]:
+        """Devuelve la lista estructurada de todas las skills registradas."""
+        results = []
+        for sk in sorted(self.skills.values(), key=lambda s: s.name):
+            file_loc = str(sk.skill_file.relative_to(self.workspace_root)).replace("\\", "/") if sk.skill_file else sk.name
+            results.append({
+                "name": sk.name,
+                "description": sk.description,
+                "triggers": sk.triggers,
+                "file": file_loc,
+                "is_dynamic": sk.is_dynamic,
+            })
+        return results
+
     def get_skills_catalog_prompt(self) -> str:
         """Genera el bloque de documentación de skills para inyectar en el System Prompt."""
         if not self.skills:
