@@ -179,7 +179,6 @@ def get_plan() -> str:
 
 def get_current_plan_state() -> Optional[Dict[str, Any]]:
     """Retorna el estado estructurado del plan activo o None."""
-    global _CURRENT_PLAN
     if _CURRENT_PLAN:
         return _CURRENT_PLAN
     plan_json_file = Path.cwd() / ".aether" / "current_plan.json"
