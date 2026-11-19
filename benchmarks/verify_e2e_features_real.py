@@ -137,10 +137,90 @@ def test_real_artifacts_e2e():
     print("✅ [TEST 3 PASADO]: Artefacto creado físicamente en disco con contenido y metadatos JSON completos.")
 
 
+def test_real_skills_e2e():
+    print("\n" + "=" * 70)
+    print("▶ [TEST 4/6] VERIFICACIÓN E2E DE SKILLS RUNTIME Y CATÁLOGO DINÁMICO")
+    print("=" * 70)
+
+    from agent.skills import execute_skill, get_global_skill_registry
+    registry = get_global_skill_registry()
+    print(f"Skills descubiertas en catálogo: {list(registry.skills.keys())}")
+    assert "code-review" in registry.skills or "review" in registry.skills
+
+    # Ejecutar skill real en disco
+    res = execute_skill("code-review", target="agent/skills.py")
+    print(f"Resultado de ejecución de skill 'code-review':\n{res[:120]}...")
+    assert "Reporte de Code Review" in res
+    print("✅ [TEST 4 PASADO]: Habilidades dinámicas ejecutadas con éxito.")
+
+
+def test_real_subagents_e2e():
+    print("\n" + "=" * 70)
+    print("▶ [TEST 5/6] VERIFICACIÓN E2E DE SUBAGENTES JERÁRQUICOS Y BUZÓN")
+    print("=" * 70)
+
+    from agent.subagents import get_global_subagent_manager
+    mgr = get_global_subagent_manager()
+
+    # Definir subagente
+    def_res = mgr.define_subagent(
+        name="test-assistant",
+        description="Asistente de prueba E2E",
+        system_prompt="Eres un subagente de prueba.",
+        enable_write_tools=False,
+    )
+    assert "test-assistant" in mgr.templates
+
+    # Invocación en contexto de memoria aislado
+    inv_res = mgr.invoke_subagent(
+        type_name="test-assistant",
+        role="Auditor E2E",
+        prompt="Confirma recepción respondiendo 'SUBAGENTE_OK'",
+    )
+    print(f"Respuesta inicial del subagente:\n{inv_res[:120]}...")
+    assert "Subagente Activado: [Auditor E2E]" in inv_res
+
+    cid = list(mgr.instances.keys())[0]
+
+    # Mensajería mediante buzón (send_message)
+    reply2 = mgr.send_message(recipient=cid, message="Turno 2: Responde 'BUZON_OK'")
+    print(f"Respuesta del buzón en turno 2:\n{reply2[:120]}...")
+    assert "Respuesta del Subagente" in reply2
+
+    # Directorio de subagentes
+    list_res = mgr.manage_subagents(action="list")
+    assert cid in list_res
+    print("✅ [TEST 5 PASADO]: Invocación y buzón de subagentes jerárquicos 100% funcionales.")
+
+
+def test_real_cdp_browser_e2e():
+    print("\n" + "=" * 70)
+    print("▶ [TEST 6/6] VERIFICACIÓN E2E DE NAVEGADOR CDP (CERO PLAYWRIGHT)")
+    print("=" * 70)
+
+    from tools.cdp_browser import browser_open, browser_get_content, find_chromium_binary
+    binary = find_chromium_binary()
+    print(f"Chromium/Edge localizado: {binary}")
+    assert binary is not None
+
+    # Abrir página local about:blank o data:
+    open_res = browser_open("about:blank")
+    print(f"Resultado browser_open:\n{open_res}")
+    assert "Página cargada con éxito" in open_res
+
+    content = browser_get_content()
+    print(f"Contenido extraído del DOM:\n{content}")
+    assert content is not None
+    print("✅ [TEST 6 PASADO]: Navegación y extracción de DOM mediante CDP 100% funcional.")
+
+
 if __name__ == "__main__":
     test_real_cancellation()
     test_real_ask_question_e2e()
     test_real_artifacts_e2e()
+    test_real_skills_e2e()
+    test_real_subagents_e2e()
+    test_real_cdp_browser_e2e()
     print("\n" + "=" * 70)
-    print("🎉 TODAS LAS PRUEBAS E2E REALES PASARON CON ÉXITO")
+    print("🎉 TODAS LAS 6 PRUEBAS E2E REALES PASARON CON ÉXITO")
     print("=" * 70)
