@@ -222,6 +222,108 @@ html, body {
   color: #6b7280;
 }
 
+.btn-icon-subtle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-icon-subtle:hover {
+  color: var(--text-main);
+  background-color: var(--bg-hover);
+}
+
+.file-tree-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.tree-folder-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding-right: 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: #c9d1d9;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  white-space: nowrap;
+}
+
+.tree-node:hover {
+  background-color: var(--bg-hover);
+  color: #ffffff;
+}
+
+.tree-node.selected {
+  background-color: rgba(0, 210, 255, 0.12);
+  color: var(--accent-cyan);
+  border-left: 2px solid var(--accent-cyan);
+  font-weight: 600;
+}
+
+.folder-node {
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.folder-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.folder-icon {
+  display: flex;
+  align-items: center;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.file-icon {
+  display: flex;
+  align-items: center;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.tree-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.folder-name {
+  color: #d1d5db;
+}
+
+.folder-children {
+  display: flex;
+  flex-direction: column;
+}
+
 .file-list {
   flex: 1;
   overflow-y: auto;

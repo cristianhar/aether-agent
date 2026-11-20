@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
   FileCode,
@@ -26,10 +26,147 @@ import {
   Layers,
   Send,
   Bot,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import "./App.css";
 
 const BRIDGE_URL = "http://127.0.0.1:8765";
+
+interface TreeNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: TreeNode[];
+}
+
+function buildFileTree(files: string[]): TreeNode[] {
+  const root: TreeNode = { name: "", path: "", isFolder: true, children: [] };
+
+  for (const filePath of files) {
+    const parts = filePath.split("/");
+    let current = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isFile = i === parts.length - 1;
+      const currentPath = parts.slice(0, i + 1).join("/");
+
+      let existing = current.children.find((child) => child.name === part);
+      if (!existing) {
+        existing = {
+          name: part,
+          path: currentPath,
+          isFolder: !isFile,
+          children: [],
+        };
+        current.children.push(existing);
+      }
+      current = existing;
+    }
+  }
+
+  function sortNodes(nodes: TreeNode[]) {
+    nodes.sort((a, b) => {
+      if (a.isFolder === b.isFolder) {
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      }
+      return a.isFolder ? -1 : 1;
+    });
+    for (const node of nodes) {
+      if (node.isFolder) {
+        sortNodes(node.children);
+      }
+    }
+  }
+
+  sortNodes(root.children);
+  return root.children;
+}
+
+interface FileTreeItemProps {
+  node: TreeNode;
+  depth: number;
+  selectedFile: string;
+  collapsedFolders: Record<string, boolean>;
+  onToggleFolder: (path: string) => void;
+  onSelectFile: (path: string) => void;
+  getFileIcon: (filename: string) => React.ReactNode;
+  fileFilter?: string;
+}
+
+function FileTreeItem({
+  node,
+  depth,
+  selectedFile,
+  collapsedFolders,
+  onToggleFolder,
+  onSelectFile,
+  getFileIcon,
+  fileFilter,
+}: FileTreeItemProps) {
+  // Si hay un filtro de búsqueda activo, expandir por defecto para mostrar coincidencias
+  const isCollapsed = fileFilter ? false : Boolean(collapsedFolders[node.path]);
+
+  if (node.isFolder) {
+    return (
+      <div className="tree-folder-group">
+        <div
+          className="tree-node folder-node"
+          style={{ paddingLeft: `${depth * 14 + 6}px` }}
+          onClick={() => onToggleFolder(node.path)}
+          title={node.path}
+        >
+          <span className="folder-chevron">
+            {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+          </span>
+          <span className="folder-icon">
+            {isCollapsed ? (
+              <Folder size={14} color="#f59e0b" />
+            ) : (
+              <FolderOpen size={14} color="#f59e0b" />
+            )}
+          </span>
+          <span className="tree-node-name folder-name">{node.name}</span>
+        </div>
+        {!isCollapsed && (
+          <div className="folder-children">
+            {node.children.map((child) => (
+              <FileTreeItem
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                selectedFile={selectedFile}
+                collapsedFolders={collapsedFolders}
+                onToggleFolder={onToggleFolder}
+                onSelectFile={onSelectFile}
+                getFileIcon={getFileIcon}
+                fileFilter={fileFilter}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const isSelected = selectedFile === node.path;
+  return (
+    <div
+      className={`tree-node file-node ${isSelected ? "selected" : ""}`}
+      style={{ paddingLeft: `${depth * 14 + 20}px` }}
+      onClick={() => onSelectFile(node.path)}
+      title={node.path}
+    >
+      <span className="file-icon">{getFileIcon(node.name)}</span>
+      <span className="tree-node-name file-name">{node.name}</span>
+    </div>
+  );
+}
 
 interface Message {
   role: "user" | "assistant" | "system";
@@ -121,6 +258,45 @@ export default function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+
+  function toggleFolder(folderPath: string) {
+    setCollapsedFolders((prev) => ({
+      ...prev,
+      [folderPath]: !prev[folderPath],
+    }));
+  }
+
+  function expandParents(filePath: string) {
+    const parts = filePath.split("/");
+    if (parts.length > 1) {
+      setCollapsedFolders((prev) => {
+        const updated = { ...prev };
+        for (let i = 1; i < parts.length; i++) {
+          const folderPath = parts.slice(0, i).join("/");
+          delete updated[folderPath];
+        }
+        return updated;
+      });
+    }
+  }
+
+  function collapseAllFolders() {
+    const all: Record<string, boolean> = {};
+    for (const file of fileList) {
+      const parts = file.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        const folder = parts.slice(0, i).join("/");
+        all[folder] = true;
+      }
+    }
+    setCollapsedFolders(all);
+  }
+
+  function expandAllFolders() {
+    setCollapsedFolders({});
+  }
 
   useEffect(() => {
     fetchStatus();
@@ -256,6 +432,7 @@ export default function App() {
   }
 
   async function loadFile(path: string) {
+    expandParents(path);
     try {
       const res = await fetch(`${BRIDGE_URL}/api/file?path=${encodeURIComponent(path)}`);
       if (res.ok) {
@@ -613,6 +790,8 @@ export default function App() {
     f.toLowerCase().includes(fileFilter.toLowerCase())
   );
 
+  const fileTree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
+
   const isDirty = fileContent !== originalContent;
 
   return (
@@ -722,20 +901,36 @@ export default function App() {
                     value={fileFilter}
                     onChange={(e) => setFileFilter(e.target.value)}
                   />
+                  <button
+                    className="btn-icon-subtle"
+                    onClick={collapseAllFolders}
+                    title="Colapsar todas las carpetas"
+                  >
+                    <ChevronsDownUp size={13} />
+                  </button>
+                  <button
+                    className="btn-icon-subtle"
+                    onClick={expandAllFolders}
+                    title="Expandir todas las carpetas"
+                  >
+                    <ChevronsUpDown size={13} />
+                  </button>
                 </div>
-                <div className="file-list">
-                  {filteredFiles.map((f) => (
-                    <div
-                      key={f}
-                      className={`file-item ${selectedFile === f ? "selected" : ""}`}
-                      onClick={() => loadFile(f)}
-                      title={f}
-                    >
-                      {getFileIcon(f)}
-                      <span className="file-name">{f}</span>
-                    </div>
+                <div className="file-tree-container">
+                  {fileTree.map((node) => (
+                    <FileTreeItem
+                      key={node.path}
+                      node={node}
+                      depth={0}
+                      selectedFile={selectedFile}
+                      collapsedFolders={collapsedFolders}
+                      onToggleFolder={toggleFolder}
+                      onSelectFile={loadFile}
+                      getFileIcon={getFileIcon}
+                      fileFilter={fileFilter}
+                    />
                   ))}
-                  {filteredFiles.length === 0 && (
+                  {fileTree.length === 0 && (
                     <div className="file-empty">No se encontraron archivos coincidentes.</div>
                   )}
                 </div>
