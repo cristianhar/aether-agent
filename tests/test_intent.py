@@ -52,3 +52,11 @@ def test_classify_questions():
     assert classify_intent("Hola peudes decirme que hace el @artifacts.py") == IntentType.QUESTION
     assert classify_intent("¿Cómo funciona el módulo @agent/memory.py?") == IntentType.QUESTION
     assert classify_intent("Explícame qué hace @tools/git_tools.py") == IntentType.QUESTION
+
+
+def test_classify_planning_queries():
+    assert classify_intent("hazme un plan de implementacion de como inicair con un poryecto ´para una peluqueria") == IntentType.QUESTION
+    assert classify_intent("dame un plan para desarrollar una app móvil") == IntentType.QUESTION
+    assert classify_intent("diseña la arquitectura para un sistema de pagos") == IntentType.QUESTION
+    assert classify_intent("cómo iniciar con un proyecto de backend") == IntentType.QUESTION
+    assert classify_intent("propón un esquema de arquitectura para una tienda") == IntentType.QUESTION

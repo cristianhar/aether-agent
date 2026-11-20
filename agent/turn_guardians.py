@@ -68,7 +68,8 @@ def evaluate_no_tool_call_guardians(
             )
 
     # 2. Guardián de Cierre de Plan Activo
-    if plan_active_in_turn and not plan_completed_in_turn and iteration < max_iterations - 1:
+    # En modo PLAN o ASK, el plan es conceptual/arquitectónico y no debe forzarse su cierre con código/tests
+    if mode not in ["plan", "ask"] and plan_active_in_turn and not plan_completed_in_turn and iteration < max_iterations - 1:
         if last_test_exit_code == 0 and files_modified_in_turn:
             try:
                 from tools.agent_tools import update_plan
@@ -76,11 +77,11 @@ def evaluate_no_tool_call_guardians(
             except Exception:
                 pass
             plan_completed_in_turn = True
-        else:
+        elif files_modified_in_turn:
             plan_guard_hint = (
                 "[SISTEMA AETHER - CIERRE DE PLAN REQUERIDO]: Has emitido una respuesta final pero el plan activo en '.aether/plans/plan_activo.md' "
                 "aún no ha sido marcado como COMPLETADO con 'update_plan(..., is_completed=True)'.\n"
-                "• Si todas las pruebas pasaron y los archivos pedidos fueron creados, tu OBLIGACIÓN es llamar a 'update_plan(plan_steps=..., is_completed=True)' para cerrar el plan.\n"
+                "• Si terminaste de implementar y verificar el código con tests, llama a 'update_plan(..., is_completed=True)' para cerrar el plan.\n"
                 "• Si aún falta implementar algún archivo o ejecutar tests, ejecuta la herramienta correspondiente ahora."
             )
             return GuardianDecision(

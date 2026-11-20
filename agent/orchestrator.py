@@ -782,7 +782,9 @@ class AgentOrchestrator:
                     is_mutation = is_success and not has_syntax_err and not ("Sin cambios" in tool_result)
                     if is_mutation:
                         files_modified_since_cmd_fail = True
-                        files_modified_in_turn = True
+                        is_internal_aether = bool(target_path and (".aether" in str(target_path).replace("\\", "/")))
+                        if not is_internal_aether:
+                            files_modified_in_turn = True
                         failed_commands.clear()  # ¡Se modificó un archivo con éxito! Limpiar fallos de comandos previos
                         last_failed_tool_key = None
                         consecutive_edit_failures = 0

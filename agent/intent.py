@@ -37,6 +37,13 @@ _EXPLANATORY_PATTERNS = [
     r"\b(what\s+does|how\s+does|can\s+you\s+explain|tell\s+me\s+about|what\s+is\s+the\s+purpose)\b",
 ]
 
+# Patrones que indican solicitudes de planificación, arquitectura o diseño conceptual
+_PLANNING_PATTERNS = [
+    r"\b(hazme|haz|dame|crea|crear|diseña|diseñar|disena|disenar|elabora|elaborar|propon|propón|proponer|genera|generar)\s+(un\s+|una\s+|el\s+|la\s+)?(plan|roadmap|arquitectura|esquema|propuesta|guía|guia|estrategia|diseño|diseno)\b",
+    r"\b(plan\s+de\s+(implementación|implementacion|trabajo|acción|accion|desarrollo|arquitectura|negocio|proyecto))\b",
+    r"\b(cómo|como|como\s+inicair|cómo\s+iniciar)\s+(iniciar|inicair|empezar|estructurar|organizar|diseñar|disenar|arquitecturar|plantear|construir)\b",
+]
+
 # Patrones generales de código (menciones, rutas, diffs)
 CODE_ENTITY_PATTERNS = [
     r"(\.(py|ts|tsx|js|jsx|json|md|html|css|yaml|yml|sh|bat|toml|sql|rs|go|c|cpp|h))\b",
@@ -78,11 +85,16 @@ def classify_intent(prompt: str) -> IntentType:
 
     has_mutation = any(re.search(p, cleaned, re.IGNORECASE) for p in _CODE_MUTATION_PATTERNS)
     has_explanation = any(re.search(p, cleaned, re.IGNORECASE) for p in _EXPLANATORY_PATTERNS)
+    has_planning = any(re.search(p, cleaned, re.IGNORECASE) for p in _PLANNING_PATTERNS)
     has_conversational = any(re.search(p, cleaned, re.IGNORECASE) for p in _CONVERSATIONAL_PATTERNS)
     has_code_entity = any(re.search(p, cleaned, re.IGNORECASE) for p in _CODE_ENTITY_PATTERNS)
 
     # 1. Si el usuario pide explicación sobre un archivo o código sin pedir mutaciones -> QUESTION
     if has_explanation and not has_mutation:
+        return IntentType.QUESTION
+
+    # 1.2 Si es una solicitud de planificación, propuesta arquitectónica o diseño sin archivos de código -> QUESTION
+    if has_planning and not has_code_entity:
         return IntentType.QUESTION
 
     # 1.5 Si es una consulta genérica pidiendo ayuda ("puedes ayudarme...") sin especificar archivo ni entidad de código -> QUESTION

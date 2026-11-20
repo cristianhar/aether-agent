@@ -83,3 +83,23 @@ def test_turn_guardian_passive_file_begging_intercepted():
     )
     assert decision.should_continue is True
     assert "AUTO-INSPECCIÓN OBLIGATORIA" in decision.user_hint
+
+
+def test_turn_guardian_plan_mode_does_not_trap_on_active_plan():
+    decision = evaluate_no_tool_call_guardians(
+        content="Aquí tienes la propuesta arquitectónica del sistema de peluquería...",
+        user_prompt="hazme un plan de implementación para una peluquería",
+        iteration=1,
+        max_iterations=10,
+        mode="plan",
+        plan_active_in_turn=True,
+        plan_completed_in_turn=False,
+        last_test_exit_code=None,
+        last_test_failure_summary=None,
+        files_modified_in_turn=False,
+        tests_executed_in_turn=False,
+        action_history=["update_plan"],
+        proactive_prompts_sent=0,
+    )
+    assert decision.should_continue is False
+    assert decision.user_hint is None

@@ -428,6 +428,7 @@ def update_artifact_tool(
     content: str,
     summary: Optional[str] = None,
     request_feedback: Optional[bool] = None,
+    **kwargs,
 ) -> str:
     """Actualiza un artefacto existente incrementando su versión."""
     from agent.artifacts import ArtifactManager
