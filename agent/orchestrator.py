@@ -349,7 +349,17 @@ class AgentOrchestrator:
                     "num_ctx": 5120,
                 }
             }
-            if not plan_completed_in_turn and user_intent != IntentType.CONVERSATIONAL:
+            has_attached_context = (
+                "[CONTEXTO ESTRUCTURADO" in user_prompt
+                or "[CONTEXTO ADJUNTO" in user_prompt
+            )
+            # No sobrecargar a Ollama con 40 herramientas si es una charla social o una pregunta explicativa con el archivo ya adjunto
+            omit_tools = (
+                plan_completed_in_turn
+                or user_intent == IntentType.CONVERSATIONAL
+                or (user_intent == IntentType.QUESTION and has_attached_context)
+            )
+            if not omit_tools:
                 payload["tools"] = get_tools_schema_for_mode(self.hooks.mode)
 
             content = ""
@@ -580,6 +590,25 @@ class AgentOrchestrator:
                     self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
                     self.set_state(AgentState.COMPLETED)
                     break
+
+                # Intercepción de send_message cuando el modelo intenta entregar su informe final al usuario
+                if tool_name == "send_message":
+                    recipient = str(args.get("recipient", "")).strip().lower()
+                    from agent.subagents import get_global_subagent_manager
+                    subagents = get_global_subagent_manager().list_subagents()
+                    is_real_subagent = any(s.get("id", "").lower() == recipient for s in subagents)
+
+                    if not is_real_subagent:
+                        if self.on_tool_call:
+                            self.on_tool_call(tool_name, args)
+                        finish_msg = args.get("message") or content or "Tarea completada con éxito."
+                        tool_result = f"🏁 Turno concluido: {finish_msg}"
+                        self._record_and_feed_result(tool_name, args, tool_result, True, 1.0)
+                        final_answer = finish_msg
+                        self.memory.add_assistant_message(content=final_answer)
+                        self.session_manager.save_message(self.session_id, current_turn, role="assistant", content=final_answer)
+                        self.set_state(AgentState.COMPLETED)
+                        break
 
                 # Notificar a la UI
                 if self.on_tool_call:

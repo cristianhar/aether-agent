@@ -19,25 +19,34 @@ class IntentType(str, Enum):
     CODE_TASK = "code_task"
 
 
-# Patrones que indican inequívocamente una tarea sobre el código o repositorio
-_CODE_TASK_PATTERNS = [
-    # Verbos de acción sobre archivos y sistema (ES y EN)
+# Patrones que indican inequívocamente una tarea de modificación sobre el código o repositorio
+_CODE_MUTATION_PATTERNS = [
     r"\b(crea|crear|edita|editar|modifica|modificar|escribe|escribir|borra|elimina|eliminar)\b",
     r"\b(refactoriza|refactorizar|implementa|implementar|arregla|arreglar|corrige|corregir)\b",
     r"\b(resuelve|resolver|agrega|agregar|añade|añadir|testea|testear|prueba|probar)\b",
     r"\b(corre|correr|ejecuta|ejecutar|compila|compilar|instala|instalar|despliega)\b",
     r"\b(write|edit|modify|create|fix|solve|run|execute|test|delete|remove|refactor|build)\b",
-    # Extensiones de archivo conocidas
-    r"(\.(py|ts|tsx|js|jsx|json|md|html|css|yaml|yml|sh|bat|toml|sql|rs|go|c|cpp|h))\b",
-    # Menciones a archivos o carpetas
-    r"(@[a-zA-Z0-9_./\\-]+)",
-    r"(/api/|src/|tests?/|desktop/|agent/|tools/|\.aether/)",
-    # Bloques de código o diffs
-    r"(```[\s\S]*?```)",
-    r"\b(git|commit|push|pull|branch|merge|diff|status|checkpoint|undo)\b",
+    r"\b(git\s+(commit|push|pull|merge|checkout|rebase))\b",
 ]
 
-# Patrones que indican preguntas o consultas conceptuales/explicativas
+# Patrones que indican consultas explicativas o de comprensión de código existente
+_EXPLANATORY_PATTERNS = [
+    r"\b(qué\s+hace|que\s+hace|cómo\s+funciona|como\s+funciona|para\s+qué\s+sirve|para\s+que\s+sirve)\b",
+    r"\b(explica|explícame|explicame|describe|describir|analiza|analizar)\b",
+    r"\b(puedes\s+decirme|puedes\s+explicarme|me\s+puedes\s+decir|me\s+puedes\s+explicar|peudes\s+decirme)\b",
+    r"\b(what\s+does|how\s+does|can\s+you\s+explain|tell\s+me\s+about|what\s+is\s+the\s+purpose)\b",
+]
+
+# Patrones generales de código (menciones, rutas, diffs)
+_CODE_ENTITY_PATTERNS = [
+    r"(\.(py|ts|tsx|js|jsx|json|md|html|css|yaml|yml|sh|bat|toml|sql|rs|go|c|cpp|h))\b",
+    r"(@[a-zA-Z0-9_./\\-]+)",
+    r"(/api/|src/|tests?/|desktop/|agent/|tools/|\.aether/)",
+    r"(```[\s\S]*?```)",
+    r"\b(git|status|diff|checkpoint|undo)\b",
+]
+
+# Patrones que indican preguntas o consultas conceptuales generales
 _QUESTION_PATTERNS = [
     r"^(qué|que|cómo|como|cuál|cual|por qué|porque|dónde|donde|cuándo|cuando|explica|explícame|dime|puedes explicar)\b",
     r"^(what|how|why|where|when|explain|tell me|can you explain)\b",
@@ -56,32 +65,43 @@ _CONVERSATIONAL_PATTERNS = [
 def classify_intent(prompt: str) -> IntentType:
     """
     Clasifica la intención del usuario de forma jerárquica y analítica:
-    1. Si contiene indicadores de código, rutas o verbos de mutación -> CODE_TASK.
-    2. Si contiene patrones conversacionales cortos sin código -> CONVERSATIONAL.
-    3. Si contiene patrones de pregunta conceptual -> QUESTION.
-    4. Heurística de longitud: Si es un texto muy breve sin código -> CONVERSATIONAL.
-       Si es extenso o estructurado -> CODE_TASK (para preservar proactividad).
+    1. Si solicita explicación o consulta sobre código existente sin mutación -> QUESTION.
+    2. Si contiene verbos de mutación o acciones activas -> CODE_TASK.
+    3. Si contiene patrones conversacionales cortos -> CONVERSATIONAL.
+    4. Si contiene entidades de código (sin ser explicativo puro) -> CODE_TASK.
+    5. Heurística para frases breves sin código -> CONVERSATIONAL.
     """
     cleaned = prompt.strip()
     if not cleaned:
         return IntentType.CONVERSATIONAL
 
-    # 1. Comprobar indicadores de código o mutación de repositorio
-    for pattern in _CODE_TASK_PATTERNS:
-        if re.search(pattern, cleaned, re.IGNORECASE):
-            return IntentType.CODE_TASK
+    has_mutation = any(re.search(p, cleaned, re.IGNORECASE) for p in _CODE_MUTATION_PATTERNS)
+    has_explanation = any(re.search(p, cleaned, re.IGNORECASE) for p in _EXPLANATORY_PATTERNS)
+    has_conversational = any(re.search(p, cleaned, re.IGNORECASE) for p in _CONVERSATIONAL_PATTERNS)
+    has_code_entity = any(re.search(p, cleaned, re.IGNORECASE) for p in _CODE_ENTITY_PATTERNS)
 
-    # 2. Comprobar patrones conversacionales
-    for pattern in _CONVERSATIONAL_PATTERNS:
-        if re.search(pattern, cleaned, re.IGNORECASE):
-            return IntentType.CONVERSATIONAL
+    # 1. Si el usuario pide explicación sobre un archivo o código sin pedir mutaciones -> QUESTION
+    if has_explanation and not has_mutation:
+        return IntentType.QUESTION
 
-    # 3. Comprobar preguntas conceptuales
+    # 2. Si hay verbos explícitos de mutación o modificación de código -> CODE_TASK
+    if has_mutation:
+        return IntentType.CODE_TASK
+
+    # 3. Comprobar patrones conversacionales (saludos, despedidas)
+    if has_conversational and not has_code_entity:
+        return IntentType.CONVERSATIONAL
+
+    # 4. Comprobar preguntas conceptuales generales
     for pattern in _QUESTION_PATTERNS:
-        if re.search(pattern, cleaned, re.IGNORECASE):
+        if re.search(pattern, cleaned, re.IGNORECASE) and not has_mutation:
             return IntentType.QUESTION
 
-    # 4. Heurística para frases breves (< 25 caracteres) de interacción humana común
+    # 5. Si contiene entidades de código (archivos, rutas) -> CODE_TASK
+    if has_code_entity:
+        return IntentType.CODE_TASK
+
+    # 6. Heurística para frases breves (< 25 caracteres) sin símbolos de código
     if len(cleaned) < 25 and not any(ch in cleaned for ch in "{}[]()<>=/\\;"):
         return IntentType.CONVERSATIONAL
 

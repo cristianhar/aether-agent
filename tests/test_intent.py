@@ -49,3 +49,6 @@ def test_classify_questions():
     assert classify_intent("¿Qué es una API REST y cómo funciona?") == IntentType.QUESTION
     assert classify_intent("Explícame la diferencia entre async y sync") == IntentType.QUESTION
     assert classify_intent("What is dependency injection?") == IntentType.QUESTION
+    assert classify_intent("Hola peudes decirme que hace el @artifacts.py") == IntentType.QUESTION
+    assert classify_intent("¿Cómo funciona el módulo @agent/memory.py?") == IntentType.QUESTION
+    assert classify_intent("Explícame qué hace @tools/git_tools.py") == IntentType.QUESTION

@@ -115,6 +115,15 @@ def check_circuit_breaker(
             "Concluye tu turno ahora resumiendo la solución para el usuario en tu respuesta final."
         )
 
+    # Bloquear run_tests repetido cuando las pruebas ya pasaron y no se modificaron archivos
+    if (tool_name == "run_tests" or (tool_name == "run_command" and "pytest" in str(args.get("command", "")).lower())):
+        if last_test_exit_code == 0 and not files_modified_since_cmd_fail and not files_modified_in_turn:
+            return True, (
+                "⛔ [CIRCUIT BREAKER]: Las pruebas ya pasaron exitosamente (Exit code 0), tu verificación ha CONCLUIDO CON ÉXITO: "
+                "NO vuelvas a ejecutar el mismo comando sin haber modificado ningún archivo. "
+                "Concluye el turno ahora e informa al usuario el resultado en tu respuesta final."
+            )
+
     # Regla: Bloquear remember_fact cuando el usuario está haciendo una pregunta
     if tool_name == "remember_fact":
         prompt_q = any(user_prompt.lower().strip().startswith(q) for q in ["qué", "que", "¿qué", "¿que", "cuál", "cual", "¿cuál", "¿cual", "dime", "cuéntame", "muestra", "dónde", "¿dónde"])
@@ -506,21 +515,33 @@ def check_circuit_breaker(
                             else:
                                 prompt_test_files = re.findall(r"\b(test_[a-zA-Z0-9_\-\.]+\.py)\b", user_prompt)
                                 prompt_src_files = [f for f in re.findall(r"\b([a-zA-Z0-9_\-\.]+\.py)\b", user_prompt) if not f.startswith("test_")]
-                                missing_src = [f for f in prompt_src_files if not (Path.cwd() / f).is_file()]
+
+                                def _file_exists_anywhere(name: str) -> bool:
+                                    if (Path.cwd() / name).is_file():
+                                        return True
+                                    try:
+                                        return any(Path.cwd().glob(f"**/{name}"))
+                                    except Exception:
+                                        return False
+
+                                missing_src = [f for f in prompt_src_files if not _file_exists_anywhere(f)]
+                                creation_requested = any(k in user_prompt.lower() for k in [
+                                    "crea ", "crear ", "implementa", "implementar", "desarrolla", "construye", "programa", "escribe un script", "haz un archivo"
+                                ])
 
                                 if tool_name == "update_plan":
                                     cycle_hint = (
                                         "• Ya actualizaste el plan anteriormente con este mismo estado. "
                                         "Avanza a la implementación del siguiente paso o concluye el turno si el plan fue completado."
                                     )
-                                elif missing_src:
+                                elif missing_src and creation_requested:
                                     target_src = missing_src[0]
                                     cycle_hint = (
                                         f"• El archivo solicitado '{target_src}' AÚN NO HA SIDO CREADO en el disco.\n"
                                         f"• Tu SIGUIENTE ACCIÓN OBLIGATORIA es llamar a 'write_file(path=\"{target_src}\", content=...)' para implementarlo.\n"
                                         f"• NO vuelvas a llamar a '{tool_name}' sin haber creado el código fuente primero."
                                     )
-                                elif prompt_test_files and not (Path.cwd() / prompt_test_files[0]).is_file():
+                                elif prompt_test_files and creation_requested and not _file_exists_anywhere(prompt_test_files[0]):
                                     target_test = prompt_test_files[0]
                                     cycle_hint = (
                                         f"• El archivo de pruebas '{target_test}' aún no ha sido creado en el disco.\n"
@@ -529,7 +550,7 @@ def check_circuit_breaker(
                                     )
                                 else:
                                     cycle_hint = (
-                                        "• Si ya creaste tanto el código como las pruebas, ejecútalas usando 'run_tests()' o 'run_command(command=\"pytest\")'.\n"
+                                        "• Si ya realizaste la inspección o verificación, concluye tu turno ahora respondiendo al usuario con el informe o explicación final.\n"
                                         f"• NO vuelvas a llamar a '{tool_name}' con los mismos argumentos sin avanzar en la tarea."
                                     )
                         msg = (
