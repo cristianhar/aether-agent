@@ -8,7 +8,7 @@ import ast
 import json
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def detect_action_cycle(action_history: List[str], max_period: int = 3, min_repeats: int = 2) -> Optional[Tuple[int, List[str]]]:
@@ -103,7 +103,8 @@ def check_circuit_breaker(
         "read_file", "list_directory", "search_codebase", "grep_search", "grep", "get_file_outline",
         "get_git_status", "get_git_diff", "get_diagnostics", "find_definition",
         "find_references", "get_dependencies", "get_hardware_vram_status", "get_repo_map",
-        "get_plan", "conclude_turn", "finish_turn", "complete_task", "finish", "done"
+        "get_plan", "conclude_turn", "finish_turn", "complete_task", "finish", "done",
+        "search_web", "fetch_web_page", "browser_open", "browser_get_content", "browser_screenshot"
     }
 
     # Completion Guard: Si el plan fue completado, no permitir nuevas herramientas activas de mutación
@@ -143,6 +144,47 @@ def check_circuit_breaker(
             return True, (
                 f"⛔ [CIRCUIT BREAKER - BÚSQUEDA DE MEMORIA DUPLICADA]: Ya consultaste la memoria con '{query_str}'.\n"
                 "• ACCIÓN OBLIGATORIA: Concluye tu turno y responde al usuario con los datos de memoria obtenidos arriba."
+            )
+
+    # Bloqueo de search_web repetido con el mismo query
+    if tool_name == "search_web" and action_history:
+        query_str = str(args.get("query") or "").strip()
+        if query_str:
+            same_web = [a for a in action_history if a == f"search_web:{query_str}"]
+            if len(same_web) >= 1:
+                return True, (
+                    f"⛔ [CIRCUIT BREAKER - BÚSQUEDA WEB DUPLICADA]: Ya ejecutaste la búsqueda web de '{query_str}'.\n"
+                    "• ACCIÓN OBLIGATORIA: Analiza los resultados ya obtenidos en el historial y responde al usuario sin repetir la búsqueda."
+                )
+
+    # Bloqueo de fetch_web_page repetido con la misma URL
+    if tool_name == "fetch_web_page" and action_history:
+        url_str = str(args.get("url") or "").strip()
+        if url_str:
+            same_fetch = [a for a in action_history if a == f"fetch_web_page:{url_str}"]
+            if len(same_fetch) >= 1:
+                return True, (
+                    f"⛔ [CIRCUIT BREAKER - PÁGINA WEB YA CONSULTADA]: Ya obtuviste el contenido de '{url_str}'.\n"
+                    "• ACCIÓN OBLIGATORIA: Analiza la información disponible arriba y responde al usuario sin volver a descargar la página."
+                )
+
+    # Bloqueo de browser_open repetido con la misma URL
+    if tool_name == "browser_open" and action_history:
+        url_str = str(args.get("url") or "").strip()
+        if url_str:
+            same_open = [a for a in action_history if a == f"browser_open:{url_str}"]
+            if len(same_open) >= 1:
+                return True, (
+                    f"⛔ [CIRCUIT BREAKER - NAVEGADOR YA ABIERTO]: Ya abriste la URL '{url_str}' en el navegador.\n"
+                    "• ACCIÓN OBLIGATORIA: Procede a inspeccionar el contenido con 'browser_get_content()' o concluye tu respuesta."
+                )
+
+    # Bloqueo de browser_get_content consecutivo sin acciones intermedias
+    if tool_name == "browser_get_content" and action_history:
+        if action_history[-1].startswith("browser_get_content"):
+            return True, (
+                "⛔ [CIRCUIT BREAKER - CONTENIDO DE NAVEGADOR YA OBTENIDO]: Ya obtuviste el contenido actual del navegador.\n"
+                "• ACCIÓN OBLIGATORIA: Responde al usuario con la información encontrada o interactúa con 'browser_click'/'browser_type'."
             )
 
     # Regla Anti-Alucinación de Archivos Genéricos (module.py, test_module.py, etc.)
@@ -259,7 +301,7 @@ def check_circuit_breaker(
             "y los archivos requeridos están completos en disco. Concluye tu turno ahora resumiendo la solución para el usuario."
         )
 
-    if tool_name in ["read_file", "get_file_outline", "get_git_diff", "get_git_status", "get_repo_map", "list_directory", "search_codebase", "grep_search", "grep", "get_diagnostics"]:
+    if tool_name in ["read_file", "get_file_outline", "get_git_diff", "get_git_status", "get_repo_map", "list_directory", "search_codebase", "grep_search", "grep", "get_diagnostics", "search_web", "fetch_web_page", "browser_open", "browser_get_content", "browser_screenshot"]:
 
         # Bloqueo de get_diagnostics repetido en el mismo archivo
         if tool_name == "get_diagnostics" and action_history:
@@ -322,8 +364,12 @@ def check_circuit_breaker(
             passive_history = [a for a in action_history if any(a.startswith(f"{p}:") or a == p for p in passive_tools)]
             if tool_name == "get_repo_map":
                 curr_sig = "get_repo_map"
-            elif tool_name in ["search_codebase", "grep_search", "grep"]:
+            elif tool_name in ["search_codebase", "grep_search", "grep", "search_web"]:
                 curr_sig = f"{tool_name}:{args.get('query', '')}"
+            elif tool_name in ["fetch_web_page", "browser_open"]:
+                curr_sig = f"{tool_name}:{args.get('url', '')}"
+            elif tool_name == "browser_get_content":
+                curr_sig = "browser_get_content"
             elif tool_name == "list_directory":
                 curr_sig = f"list_directory:{args.get('path', '.')}"
             else:

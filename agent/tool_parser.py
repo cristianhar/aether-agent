@@ -7,15 +7,44 @@ bloques markdown (diff, json, python) o etiquetas XML.
 import ast
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
-def extract_tool_calls_from_content(content: str) -> List[Dict[str, Any]]:
-    """
-    Extrae llamadas a herramientas cuando Ollama/Qwen las devuelve
-    embebidas en 'content' (JSON plano o bloques markdown), o sintetiza
-    write_file si el modelo devolvió bloques de código pasivos.
-    """
+TOOL_ALIASES: Dict[str, str] = {
+    "ask": "ask_question",
+    "question": "ask_question",
+    "terminal": "run_command",
+    "bash": "run_command",
+    "sh": "run_command",
+    "exec": "run_command",
+}
+
+
+def _normalize_tool_call(tc: Dict[str, Any]) -> Dict[str, Any]:
+    """Normaliza nombres de herramientas con alias y argumentos frecuentes."""
+    fn = tc.get("function")
+    if not isinstance(fn, dict):
+        return tc
+
+    name = fn.get("name", "")
+    args = fn.get("arguments", {})
+    if name in TOOL_ALIASES:
+        fn["name"] = TOOL_ALIASES[name]
+        name = fn["name"]
+
+    if name == "ask_question" and isinstance(args, dict):
+        if "question" in args and "questions" not in args:
+            fn["arguments"] = {"questions": [{"question": args["question"], "options": ["Sí", "No"]}]}
+
+    return tc
+
+
+def _normalize_calls_list(calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_normalize_tool_call(c) for c in calls]
+
+
+def _raw_extract_tool_calls_from_content(content: str) -> List[Dict[str, Any]]:
+    """Extrae llamadas crudas a herramientas desde el contenido."""
     if not content or not content.strip():
         return []
 
@@ -203,3 +232,13 @@ def extract_tool_calls_from_content(content: str) -> List[Dict[str, Any]]:
                 }]
 
     return []
+
+
+def extract_tool_calls_from_content(content: str) -> List[Dict[str, Any]]:
+    """
+    Extrae y normaliza llamadas a herramientas cuando Ollama/Qwen las devuelve
+    embebidas en 'content' (JSON plano o bloques markdown), o sintetiza
+    write_file si el modelo devolvió bloques de código pasivos.
+    """
+    raw_calls = _raw_extract_tool_calls_from_content(content)
+    return _normalize_calls_list(raw_calls)

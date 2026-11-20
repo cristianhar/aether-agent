@@ -190,11 +190,14 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
             from agent.artifacts import ArtifactManager
             mgr = ArtifactManager(session_id=orch.session_id)
             artifacts = mgr.list_artifacts()
+            for a in artifacts:
+                if "artifact_id" in a and "id" not in a:
+                    a["id"] = a["artifact_id"]
             self._send_json({"artifacts": artifacts})
 
         elif path == "/api/artifact":
-            art_id = params.get("id", [""])[0]
-            if not art_id:
+            art_id = params.get("id", [""])[0] or params.get("artifact_id", [""])[0]
+            if not art_id or art_id == "undefined":
                 self._send_json({"error": "Parámetro 'id' requerido."}, 400)
                 return
             from agent.artifacts import ArtifactManager
@@ -379,6 +382,8 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                     return
 
             with _LOCK:
+                if _ACTIVE_TOKEN and not _ACTIVE_TOKEN.is_cancelled:
+                    _ACTIVE_TOKEN.cancel("Cancelado por nuevo turno de usuario.")
                 _ACTIVE_TOKEN = CancellationToken()
                 token = _ACTIVE_TOKEN
 
@@ -392,6 +397,10 @@ class AetherBridgeHandler(BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"success": False, "error": str(e)}, 500)
+            finally:
+                with _LOCK:
+                    if _ACTIVE_TOKEN is token:
+                        _ACTIVE_TOKEN = None
 
         elif path == "/api/cancel":
             with _LOCK:

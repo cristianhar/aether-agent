@@ -3,11 +3,8 @@ Orquestador y Bucle ReAct principal para el Agente AETHER.
 Integra máquina de estados, token de cancelación, motor de permisos, persistencia SQLite y telemetría.
 """
 
-from datetime import datetime
 import ast
-import difflib
 import json
-import os
 from pathlib import Path
 import re
 import time
@@ -24,7 +21,7 @@ from agent.skills import get_global_skill_registry
 from agent.state import AgentState, CancellationToken
 from agent.telemetry import TelemetryLogger
 from tools.base import PermissionLevel, ToolCategory
-from tools.registry import TOOLS_SCHEMA, execute_tool, get_tools_schema_for_mode
+from tools.registry import execute_tool, get_tools_schema_for_mode
 
 
 from agent.circuit_breaker import (
@@ -291,6 +288,17 @@ class AgentOrchestrator:
         self.memory.add_user_message(user_prompt)
         self.session_manager.save_message(self.session_id, current_turn, role="user", content=user_prompt)
 
+        prompt_norm = re.sub(r"[!¡?¿\.,;:]", "", user_prompt).strip().lower()
+        greeting_words = {
+            "hola", "buenas", "buenos dias", "buenos días", "buenas tardes",
+            "buenas noches", "como estas", "cómo estás", "que tal", "qué tal",
+            "hi", "hello", "hey"
+        }
+        is_pure_greeting = prompt_norm in greeting_words or any(
+            prompt_norm == f"hola {g}" or prompt_norm == f"{g} aether" or prompt_norm == f"hola aether {g}"
+            for g in ["como estas", "cómo estás", "que tal", "qué tal", "amigo"]
+        )
+
         final_answer = ""
         total_tool_calls = 0
         total_tool_failures = 0
@@ -349,7 +357,7 @@ class AgentOrchestrator:
                     "num_ctx": 5120,
                 }
             }
-            if not plan_completed_in_turn:
+            if not plan_completed_in_turn and not is_pure_greeting:
                 payload["tools"] = get_tools_schema_for_mode(self.hooks.mode)
 
             content = ""

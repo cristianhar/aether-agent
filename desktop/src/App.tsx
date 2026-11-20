@@ -120,6 +120,7 @@ export default function App() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetchStatus();
@@ -236,14 +237,16 @@ export default function App() {
     } catch {}
   }
 
-  async function loadArtifact(art: ArtifactItem) {
+  async function loadArtifact(art: any) {
+    const artId = art.id || art.artifact_id;
+    if (!artId || artId === "undefined") return;
     try {
-      const res = await fetch(`${BRIDGE_URL}/api/artifact?id=${encodeURIComponent(art.id)}`);
+      const res = await fetch(`${BRIDGE_URL}/api/artifact?id=${encodeURIComponent(artId)}`);
       if (res.ok) {
         const data = await res.json();
-        const displayName = `[Artefacto] ${art.title || art.id}.md`;
+        const displayName = `[Artefacto] ${art.title || artId}.md`;
         setSelectedFile(displayName);
-        setFileContent(data.content || `# ${art.title}\n${art.summary || ""}`);
+        setFileContent(data.content || `# ${art.title || artId}\n${art.summary || ""}`);
         setOriginalContent(data.content || "");
         setActiveTab("editor");
       }
@@ -463,11 +466,18 @@ export default function App() {
     setMessages((prev) => [...prev, { role: "user", content: userMsg, isCommand: isCmd }]);
     setIsRunning(true);
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const res = await fetch(`${BRIDGE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: userMsg, active_file: selectedFile }),
+        signal: controller.signal,
       });
 
       if (res.ok) {
@@ -497,7 +507,10 @@ export default function App() {
           { role: "assistant", content: `❌ Error: ${err.error || "Fallo en ejecución."}` },
         ]);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        return;
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -506,11 +519,18 @@ export default function App() {
         },
       ]);
     } finally {
-      setIsRunning(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setIsRunning(false);
+      }
     }
   }
 
   async function handleCancel() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     try {
       await fetch(`${BRIDGE_URL}/api/cancel`, { method: "POST" });
     } catch {}
@@ -724,20 +744,23 @@ export default function App() {
               <pre className="repo-map-view">{repoMap || "Cargando mapa arquitectónico AST..."}</pre>
             ) : (
               <div className="artifact-list">
-                {artifactsList.map((art) => (
-                  <div
-                    key={art.id}
-                    className="artifact-card"
-                    onClick={() => loadArtifact(art)}
-                    title={`Artefacto: ${art.title} (${art.type})`}
-                  >
-                    <div className="artifact-title">{art.title}</div>
-                    <div className="artifact-meta">
-                      <span>🏷️ {art.type}</span>
-                      <span>📅 {new Date(art.created_at).toLocaleTimeString()}</span>
+                {artifactsList.map((art: any) => {
+                  const artId = art.id || art.artifact_id || "art";
+                  return (
+                    <div
+                      key={artId}
+                      className="artifact-card"
+                      onClick={() => loadArtifact(art)}
+                      title={`Artefacto: ${art.title || artId} (${art.type || 'doc'})`}
+                    >
+                      <div className="artifact-title">{art.title || artId}</div>
+                      <div className="artifact-meta">
+                        <span>🏷️ {art.type || 'documento'}</span>
+                        <span>📅 {art.created_at ? new Date(art.created_at).toLocaleTimeString() : ''}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {artifactsList.length === 0 && (
                   <div className="file-empty">No hay artefactos en esta sesión aún.</div>
                 )}

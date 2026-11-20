@@ -40,11 +40,19 @@ def evaluate_no_tool_call_guardians(
     """
     # 1. Detección de tool call fantasma malformado en JSON
     if not plan_completed_in_turn and '"name":' in content and ('"arguments":' in content or '"path":' in content or '"command":' in content):
-        if iteration < max_iterations:
+        # Si la consulta del usuario es un saludo o puramente conversacional, no interceptar como tool call fallido
+        prompt_strip = re.sub(r"[!¡?¿\.,;:]", "", user_prompt).strip().lower()
+        is_greeting = any(prompt_strip == g or prompt_strip.startswith(f"{g} ") or prompt_strip.endswith(f" {g}") for g in [
+            "hola", "buenas", "buenos dias", "buenos días", "buenas tardes", "buenas noches",
+            "como estas", "cómo estás", "que tal", "qué tal", "hi", "hello", "hey"
+        ])
+        if not is_greeting and iteration < max_iterations:
+            has_triple_quotes = '"""' in content or "'''" in content
+            extra_quote_hint = " sin escapar triples comillas de Python dentro de strings." if has_triple_quotes else "."
             retry_hint = (
                 "[SISTEMA AETHER]: Se detectó que intentaste emitir una llamada a herramienta en formato JSON, "
                 "pero no pudo ser ejecutada por errores de formato o sintaxis. "
-                "Por favor emite la llamada usando la herramienta directamente sin escapar triples comillas de Python dentro de strings."
+                f"Por favor emite la llamada usando la herramienta formal correspondiente{extra_quote_hint}"
             )
             return GuardianDecision(
                 should_continue=True,
