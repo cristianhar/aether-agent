@@ -30,6 +30,7 @@ from agent.circuit_breaker import (
     extract_test_failure_summary,
 )
 from agent.diff_preview import generate_tool_diff
+from agent.intent import classify_intent, IntentType
 from agent.tool_parser import extract_tool_calls_from_content
 from agent.turn_guardians import evaluate_no_tool_call_guardians
 def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
@@ -288,16 +289,7 @@ class AgentOrchestrator:
         self.memory.add_user_message(user_prompt)
         self.session_manager.save_message(self.session_id, current_turn, role="user", content=user_prompt)
 
-        prompt_norm = re.sub(r"[!¡?¿\.,;:]", "", user_prompt).strip().lower()
-        greeting_words = {
-            "hola", "buenas", "buenos dias", "buenos días", "buenas tardes",
-            "buenas noches", "como estas", "cómo estás", "que tal", "qué tal",
-            "hi", "hello", "hey"
-        }
-        is_pure_greeting = prompt_norm in greeting_words or any(
-            prompt_norm == f"hola {g}" or prompt_norm == f"{g} aether" or prompt_norm == f"hola aether {g}"
-            for g in ["como estas", "cómo estás", "que tal", "qué tal", "amigo"]
-        )
+        user_intent = classify_intent(user_prompt)
 
         final_answer = ""
         total_tool_calls = 0
@@ -357,7 +349,7 @@ class AgentOrchestrator:
                     "num_ctx": 5120,
                 }
             }
-            if not plan_completed_in_turn and not is_pure_greeting:
+            if not plan_completed_in_turn and user_intent != IntentType.CONVERSATIONAL:
                 payload["tools"] = get_tools_schema_for_mode(self.hooks.mode)
 
             content = ""

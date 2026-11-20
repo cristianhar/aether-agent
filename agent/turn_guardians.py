@@ -9,6 +9,13 @@ from pathlib import Path
 import re
 from typing import List, Optional
 
+from agent.intent import classify_intent, IntentType
+
+_KNOWN_ACTION_TOOLS = {
+    "write_file", "edit_file", "run_command", "read_file", "delete_file",
+    "move_file", "update_plan", "run_tests", "list_directory", "get_repo_map"
+}
+
 
 @dataclass
 class GuardianDecision:
@@ -38,19 +45,18 @@ def evaluate_no_tool_call_guardians(
     Evalúa si una respuesta del LLM sin llamadas a herramientas es válida para concluir
     el turno o si viola las directivas de proactividad, verificación o cierre de planes.
     """
-    # 1. Detección de tool call fantasma malformado en JSON
+    # 1. Detección de tool call fantasma malformado en JSON para herramientas reales del workspace
     if not plan_completed_in_turn and '"name":' in content and ('"arguments":' in content or '"path":' in content or '"command":' in content):
-        # Si la consulta del usuario es un saludo o puramente conversacional, no interceptar como tool call fallido
-        prompt_strip = re.sub(r"[!¡?¿\.,;:]", "", user_prompt).strip().lower()
-        is_greeting = any(prompt_strip == g or prompt_strip.startswith(f"{g} ") or prompt_strip.endswith(f" {g}") for g in [
-            "hola", "buenas", "buenos dias", "buenos días", "buenas tardes", "buenas noches",
-            "como estas", "cómo estás", "que tal", "qué tal", "hi", "hello", "hey"
-        ])
-        if not is_greeting and iteration < max_iterations:
+        intent = classify_intent(user_prompt)
+        tool_name_match = re.search(r'"name":\s*"([a-zA-Z0-9_]+)"', content)
+        target_tool = tool_name_match.group(1) if tool_name_match else ""
+
+        # Solo interceptar si la intención es de código y se refiere a una herramienta de acción conocida
+        if intent != IntentType.CONVERSATIONAL and target_tool in _KNOWN_ACTION_TOOLS and iteration < max_iterations:
             has_triple_quotes = '"""' in content or "'''" in content
             extra_quote_hint = " sin escapar triples comillas de Python dentro de strings." if has_triple_quotes else "."
             retry_hint = (
-                "[SISTEMA AETHER]: Se detectó que intentaste emitir una llamada a herramienta en formato JSON, "
+                f"[SISTEMA AETHER]: Se detectó que intentaste emitir una llamada a '{target_tool}' en formato JSON, "
                 "pero no pudo ser ejecutada por errores de formato o sintaxis. "
                 f"Por favor emite la llamada usando la herramienta formal correspondiente{extra_quote_hint}"
             )
