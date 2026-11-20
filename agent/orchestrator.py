@@ -30,7 +30,7 @@ from agent.circuit_breaker import (
     extract_test_failure_summary,
 )
 from agent.diff_preview import generate_tool_diff
-from agent.intent import classify_intent, IntentType
+from agent.intent import classify_intent, IntentType, CODE_ENTITY_PATTERNS
 from agent.tool_parser import extract_tool_calls_from_content
 from agent.turn_guardians import evaluate_no_tool_call_guardians
 def get_tool_metadata(name: str) -> Tuple[ToolCategory, PermissionLevel]:
@@ -353,11 +353,15 @@ class AgentOrchestrator:
                 "[CONTEXTO ESTRUCTURADO" in user_prompt
                 or "[CONTEXTO ADJUNTO" in user_prompt
             )
-            # No sobrecargar a Ollama con 40 herramientas si es una charla social o una pregunta explicativa con el archivo ya adjunto
+            has_code_entity = any(
+                re.search(p, user_prompt, re.IGNORECASE)
+                for p in CODE_ENTITY_PATTERNS
+            )
+            # No sobrecargar a Ollama con 40 herramientas si es una charla social o una pregunta explicativa / genérica sin archivo objetivo
             omit_tools = (
                 plan_completed_in_turn
                 or user_intent == IntentType.CONVERSATIONAL
-                or (user_intent == IntentType.QUESTION and has_attached_context)
+                or (user_intent == IntentType.QUESTION and (has_attached_context or not has_code_entity))
             )
             if not omit_tools:
                 payload["tools"] = get_tools_schema_for_mode(self.hooks.mode)

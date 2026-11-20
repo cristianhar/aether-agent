@@ -38,13 +38,14 @@ _EXPLANATORY_PATTERNS = [
 ]
 
 # Patrones generales de código (menciones, rutas, diffs)
-_CODE_ENTITY_PATTERNS = [
+CODE_ENTITY_PATTERNS = [
     r"(\.(py|ts|tsx|js|jsx|json|md|html|css|yaml|yml|sh|bat|toml|sql|rs|go|c|cpp|h))\b",
     r"(@[a-zA-Z0-9_./\\-]+)",
     r"(/api/|src/|tests?/|desktop/|agent/|tools/|\.aether/)",
     r"(```[\s\S]*?```)",
     r"\b(git|status|diff|checkpoint|undo)\b",
 ]
+_CODE_ENTITY_PATTERNS = CODE_ENTITY_PATTERNS
 
 # Patrones que indican preguntas o consultas conceptuales generales
 _QUESTION_PATTERNS = [
@@ -82,6 +83,16 @@ def classify_intent(prompt: str) -> IntentType:
 
     # 1. Si el usuario pide explicación sobre un archivo o código sin pedir mutaciones -> QUESTION
     if has_explanation and not has_mutation:
+        return IntentType.QUESTION
+
+    # 1.5 Si es una consulta genérica pidiendo ayuda ("puedes ayudarme...") sin especificar archivo ni entidad de código -> QUESTION
+    is_generic_help = (
+        bool(re.search(r"^[¿¡]?\s*(puedes|podrías|podrias|me\s+puedes)\s+ayudar(me|nos)?\b", cleaned, re.IGNORECASE)
+             or re.search(r"^[¿¡]?\s*(can\s+you|could\s+you)\s+help\b", cleaned, re.IGNORECASE))
+        and not has_code_entity
+        and len(cleaned.split()) <= 10
+    )
+    if is_generic_help:
         return IntentType.QUESTION
 
     # 2. Si hay verbos explícitos de mutación o modificación de código -> CODE_TASK

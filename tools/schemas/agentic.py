@@ -377,7 +377,7 @@ AGENTIC_TOOLS: List[Dict[str, Any]] = [
             "parameters": {
                 "properties": {
                     "task_description": {
-                        "description": "Instrucción clara y específica para el subagente (ej: 'Revisa qué funciones exporta core/stt.py').",
+                        "description": "Instrucción clara y específica para el subagente (ej: 'Revisa qué funciones exporta agent/orchestrator.py').",
                         "type": "string"
                     }
                 },
